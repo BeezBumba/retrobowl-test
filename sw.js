@@ -1,4 +1,4 @@
-const KEY = 'RETROBOWLCOLLEGE';
+const KEY = 'RETROBOWL';
 
 self.addEventListener('install', (event) => {
     event.waitUntil(self.skipWaiting());
