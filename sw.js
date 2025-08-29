@@ -15,24 +15,23 @@ self.addEventListener('message', (event) => {
     }
 });
 
-self.addEventListener("fetch", (e) => {
-  e.respondWith(
-    (async () => {
-      try {
-        console.log(`[Service Worker] Attempting to serve resource from cache: ${e.request.url}`);
-        const r = await caches.match(e.request);
-        if (r) {
-          return r;
+
+const ASSET_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.mp3', '.wav', '.json', '.js'];
+
+self.addEventListener('fetch', (e) => {
+  const url = new URL(e.request.url);
+  if (ASSET_EXTENSIONS.some(ext => url.pathname.endsWith(ext))) {
+    e.respondWith(
+      caches.open(KEY).then(async (cache) => {
+        const cached = await cache.match(e.request);
+        if (cached) return cached;
+
+        const resp = await fetch(e.request);
+        if (resp.ok) {
+          cache.put(e.request, resp.clone());
         }
-        console.log(`[Service Worker] Attempting live fetch: ${e.request.url}`);
-        const response = await fetch(e.request, { mode: 'no-cors' });
-        const cache = await caches.open(KEY);
-        console.log(`[Service Worker] Caching new resource: ${e.request.url}`);
-        cache.put(e.request, response.clone());
-        return response;
-      } catch (err) {
-        console.error(`[Service Worker] Fetch failed: ${err}`);
-      }
-    })()
-  );
+        return resp;
+      })
+    );
+  }
 });
