@@ -75,11 +75,23 @@ const RAW_ASSETS = [
 
 // Install: cache all assets
 self.addEventListener('install', event => {
-  console.log('[SW] Installing...');
+  console.log('[SW] 🔧 Install event triggered');
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      console.log('[SW] Caching assets...');
-      return cache.addAll(RAW_ASSETS);
+    caches.open(CACHE_NAME).then(async cache => {
+      console.log(`[SW] 📦 Opened cache: ${CACHE_NAME}`);
+      for (const asset of RAW_ASSETS) {
+        const assetURL = new URL(asset, self.location.origin).href;
+        try {
+          console.log(`[SW] ⏳ Attempting to cache: ${assetURL}`);
+          await cache.add(asset);
+          console.log(`[SW] ✅ Cached successfully: ${assetURL}`);
+        } catch (err) {
+          console.error(`[SW] ❌ Failed to cache: ${assetURL}`);
+          console.error(`[SW] ⚠️ Error details:`, err);
+        }
+      }
+    }).catch(err => {
+      console.error('[SW] 🚨 Cache open failed:', err);
     })
   );
 });
