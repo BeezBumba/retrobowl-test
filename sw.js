@@ -1,10 +1,12 @@
 const CACHE_NAME = 'RETROBOWL-v1';
-const ASSETS_TO_CACHE = [
-  '/', // Optional root fallback
+const BASE_PATH = '/retrobowl-test';
+
+const RAW_ASSETS = [
+  '/', 
   '/index.html',
   '/register_sw.js',
   '/manifest.json',
-  '/sdk/poki-sdk.js',
+  '/sdk/poki-sdk.js', 
   '/favicon.ico',
   '/rb192.jpg',
   '/img/icon.png',
@@ -12,11 +14,10 @@ const ASSETS_TO_CACHE = [
   '/js/main.js',
   '/js/main_unpacked.js',
   '/sdk/details.json',
-  '/sdk/poki-sdk.js',
   '/sdk/prebid.js',
   '/sdk/settings.json',
   '/sdk/core.js/poki-sdk-core-.js',
-  '/rb400.jpg',
+  '/rb400.jpg', 
   '/rb64.jpg',
   '/cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js',
   '/html5game/sound/worklets/audio-worklet.js',
@@ -68,6 +69,11 @@ const ASSETS_TO_CACHE = [
   '/html5game/uph_poki.js'
 ];
 
+// Prefix all assets with /retrobowl-test
+const ASSETS_TO_CACHE = RAW_ASSETS.map(path =>
+  path === '/' ? BASE_PATH + '/' : BASE_PATH + path
+);
+
 // Install: cache all assets
 self.addEventListener('install', event => {
   console.log('[SW] Installing...');
@@ -106,7 +112,7 @@ self.addEventListener('fetch', event => {
       console.log(`[SW] Fetching from network: ${event.request.url}`);
       return fetch(event.request).catch(() => {
         if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
+          return caches.match(BASE_PATH + '/index.html');
         }
       });
     })
