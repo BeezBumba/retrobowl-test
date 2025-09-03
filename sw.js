@@ -111,7 +111,7 @@ self.addEventListener('fetch', event => {
       console.log(`[SW] Fetching from network: ${event.request.url}`);
       return fetch(event.request).catch(() => {
         if (event.request.mode === 'navigate') {
-          return caches.match(BASE_PATH + '/index.html');
+          return caches.match('index.html');
         }
       });
     })
