@@ -8,7 +8,7 @@ const RAW_ASSETS = [
   'sdk/poki-sdk.js', 
   'favicon.ico',
   'rb192.jpg',
-  'img/icon.png',
+  'img/icon.jpg',
   'img/splash.png',
   'js/main.js',
   'js/main_unpacked.js',
