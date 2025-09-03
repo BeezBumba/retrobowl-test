@@ -25,7 +25,6 @@ const ASSETS_TO_CACHE = [
   '/html5game/Colleges.txt',
   '/html5game/LanguageUS.txt',
   '/html5game/LanguageUS_FR.txt',
-  '/html5game/MajorMinor_CO.txt',
   '/html5game/Names_F0.txt',
   '/html5game/Names_F1.txt',
   '/html5game/Names_L.txt',
