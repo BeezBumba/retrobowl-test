@@ -121,7 +121,8 @@ self.addEventListener('fetch', event => {
     url.hostname.includes('cloudflareinsights.com') ||
     url.hostname.includes('cmp.inmobi.com')
   ) {
-    event.respondWith(new Response('', { status: 204 }));
+    // ✅ No body at all for 204
+    event.respondWith(new Response(undefined, { status: 204 }));
     return;
   }
 
@@ -136,10 +137,13 @@ self.addEventListener('fetch', event => {
         if (event.request.mode === 'navigate') {
           return caches.match('index.html');
         }
-        return new Response('', { status: 204 });
+        // ✅ Either no body with 204...
+        // return new Response(undefined, { status: 204 });
+
+        // ...or safe empty body with 200
+        return new Response('', { status: 200 });
       });
     })
   );
 });
-
 
