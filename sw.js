@@ -80,7 +80,7 @@ self.addEventListener('install', event => {
           console.log(`[SW] ✅ Cached: ${assetURL}`);
         } catch (err) {
           // Only log if online to avoid spam when offline
-          if (navigator.onLine) {
+          if (navigator.online) {
             console.error(`[SW] ❌ Failed to cache: ${assetURL}`, err);
           }
         }
