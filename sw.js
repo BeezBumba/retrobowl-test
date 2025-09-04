@@ -1,11 +1,10 @@
 const CACHE_NAME = 'RETROBOWL-v1';
-//const BASE_PATH = '/retrobowl-test';
 
-const RAW_ASSETS = [ 
+const RAW_ASSETS = [
   'index.html',
   'register_sw.js',
   'manifest.json',
-  'sdk/poki-sdk.js', 
+  'sdk/poki-sdk.js',
   'favicon.ico',
   'rb192.jpg',
   'img/icon.jpg',
@@ -16,7 +15,7 @@ const RAW_ASSETS = [
   'sdk/prebid.js',
   'sdk/settings.json',
   'sdk/core.js/poki-sdk-core-.js',
-  'rb400.jpg', 
+  'rb400.jpg',
   'rb64.jpg',
   'cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js',
   'html5game/sound/worklets/audio-worklet.js',
@@ -68,11 +67,6 @@ const RAW_ASSETS = [
   'html5game/uph_poki.js'
 ];
 
-// Prefix all assets with /retrobowl-test
-//const ASSETS_TO_CACHE = RAW_ASSETS.map(path =>
- // path === '/' ? BASE_PATH + '/' : BASE_PATH + path
-//);
-
 // Install: cache all assets
 self.addEventListener('install', event => {
   console.log('[SW] 🔧 Install event triggered');
@@ -82,12 +76,13 @@ self.addEventListener('install', event => {
       for (const asset of RAW_ASSETS) {
         const assetURL = new URL(asset, self.location.origin).href;
         try {
-          console.log(`[SW] ⏳ Attempting to cache: ${assetURL}`);
           await cache.add(asset);
-          console.log(`[SW] ✅ Cached successfully: ${assetURL}`);
+          console.log(`[SW] ✅ Cached: ${assetURL}`);
         } catch (err) {
-          console.error(`[SW] ❌ Failed to cache: ${assetURL}`);
-          console.error(`[SW] ⚠️ Error details:`, err);
+          // Only log if online to avoid spam when offline
+          if (navigator.onLine) {
+            console.error(`[SW] ❌ Failed to cache: ${assetURL}`, err);
+          }
         }
       }
     }).catch(err => {
@@ -103,7 +98,7 @@ self.addEventListener('activate', event => {
     caches.keys().then(keys =>
       Promise.all(
         keys.filter(key => key !== CACHE_NAME).map(key => {
-          console.log(`[SW] Deleting old cache: ${key}`);
+          console.log(`[SW] 🗑 Deleting old cache: ${key}`);
           return caches.delete(key);
         })
       )
@@ -111,7 +106,7 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Cache‑first fetch handler with query‑string tolerance & silent analytics fail
+// Cache‑first fetch handler with query‑string tolerance & safe fallbacks
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
@@ -121,7 +116,6 @@ self.addEventListener('fetch', event => {
     url.hostname.includes('cloudflareinsights.com') ||
     url.hostname.includes('cmp.inmobi.com')
   ) {
-    // ✅ No body at all for 204
     event.respondWith(new Response(undefined, { status: 204 }));
     return;
   }
@@ -134,16 +128,19 @@ self.addEventListener('fetch', event => {
       }
       console.log(`[SW] Fetching from network: ${url.href}`);
       return fetch(event.request).catch(() => {
+        // Offline fallback logic
         if (event.request.mode === 'navigate') {
           return caches.match('index.html');
         }
-        // ✅ Either no body with 204...
-        // return new Response(undefined, { status: 204 });
-
-        // ...or safe empty body with 200
+        // Return safe stubs for known file types
+        if (url.pathname.endsWith('.json')) {
+          return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (url.pathname.endsWith('.txt')) {
+          return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
+        }
         return new Response('', { status: 200 });
       });
     })
   );
 });
-
