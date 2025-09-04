@@ -111,21 +111,35 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Fetch: serve from cache, fallback to network
+// Cache‑first fetch handler with query‑string tolerance & silent analytics fail
 self.addEventListener('fetch', event => {
-  console.log(`[SW] Fetching: ${event.request.url}`);
+  const url = new URL(event.request.url);
+
+  // Ignore analytics / Cloudflare RUM / ad beacons
+  if (
+    url.pathname.startsWith('/cdn-cgi/rum') ||
+    url.hostname.includes('cloudflareinsights.com') ||
+    url.hostname.includes('cmp.inmobi.com')
+  ) {
+    event.respondWith(new Response('', { status: 204 }));
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then(cachedResponse => {
-      if (cachedResponse) {
-        console.log(`[SW] Serving from cache: ${event.request.url}`);
-        return cachedResponse;
+    caches.match(event.request, { ignoreSearch: true }).then(cached => {
+      if (cached) {
+        console.log(`[SW] Serving from cache: ${url.href}`);
+        return cached;
       }
-      console.log(`[SW] Fetching from network: ${event.request.url}`);
+      console.log(`[SW] Fetching from network: ${url.href}`);
       return fetch(event.request).catch(() => {
         if (event.request.mode === 'navigate') {
           return caches.match('index.html');
         }
+        return new Response('', { status: 204 });
       });
     })
   );
 });
+
+
