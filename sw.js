@@ -129,7 +129,6 @@ self.addEventListener('activate', event => {
 
 const RUNTIME_CACHE = 'runtime-third-party';
 
-// Cache‑first fetch handler with query‑string tolerance & safe fallbacks
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
@@ -158,7 +157,7 @@ self.addEventListener('fetch', event => {
   if (runtimeHosts.includes(url.hostname)) {
     event.respondWith(
       caches.open(RUNTIME_CACHE).then(async cache => {
-        const cached = await cache.match(event.request);
+        const cached = await cache.match(event.request, { ignoreSearch: true });
         if (cached) {
           console.log(`[SW] 🌐 Serving external from runtime cache: ${url.href}`);
           return cached;
@@ -177,9 +176,16 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Your existing cache‑first for RAW_ASSETS
+  // Cache‑first for RAW_ASSETS, ignoring query strings for .js/.json
   event.respondWith(
-    caches.match(event.request, { ignoreSearch: true }).then(async cached => {
+    (async () => {
+      let cached;
+      if (url.pathname.endsWith('.js') || url.pathname.endsWith('.json')) {
+        cached = await caches.match(event.request, { ignoreSearch: true });
+      } else {
+        cached = await caches.match(event.request);
+      }
+
       if (cached) {
         console.log(`[SW] Serving from cache: ${url.href}`);
         return cached;
@@ -195,7 +201,9 @@ self.addEventListener('fetch', event => {
       }
 
       console.log(`[SW] Fetching from network: ${url.href}`);
-      return fetch(event.request).catch(() => {
+      try {
+        return await fetch(event.request);
+      } catch {
         if (event.request.mode === 'navigate') {
           return caches.match('index.html');
         }
@@ -206,7 +214,7 @@ self.addEventListener('fetch', event => {
           return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
         }
         return new Response('', { status: 200 });
-      });
-    })
+      }
+    })()
   );
 });
