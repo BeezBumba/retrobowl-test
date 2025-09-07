@@ -1,7 +1,7 @@
 const CACHE_NAME = 'RETROBOWL-v1';
+const RUNTIME_CACHE_NAME = 'retrobowl-runtime-cache'; // New cache for dynamic resources
 
 const RAW_ASSETS = [
-  // ... (same list as before)
   'index.html',
   'register_sw.js',
   'manifest.json',
@@ -118,7 +118,7 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
-        keys.filter(key => key !== CACHE_NAME).map(key => {
+        keys.filter(key => key !== CACHE_NAME && key !== RUNTIME_CACHE_NAME).map(key => { // Also clean up new runtime cache
           console.log(`[SW] 🗑 Deleting old cache: ${key}`);
           return caches.delete(key);
         })
@@ -126,8 +126,6 @@ self.addEventListener('activate', event => {
     )
   );
 });
-
-const RUNTIME_CACHE = 'runtime-third-party';
 
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
@@ -138,102 +136,84 @@ self.addEventListener('fetch', event => {
     url.hostname.includes('cloudflareinsights.com') ||
     url.hostname.includes('cmp.inmobi.com')
   ) {
+    console.log(`[SW] 🚫 Blocking analytics/tracking request: ${url.href}`);
     event.respondWith(new Response(undefined, { status: 204 }));
     return;
   }
 
-  // ✅ Handle HEAD requests for cached assets (GameMaker file_exists)
+  // Handle HEAD requests for cached assets (GameMaker file_exists)
   if (event.request.method === 'HEAD') {
     event.respondWith((async () => {
-      // Try to match ignoring query strings so versioned URLs still work
       const cached = await caches.match(event.request, { ignoreSearch: true });
       if (cached) {
-        // Return empty body but preserve headers so HEAD check passes
+        console.log(`[SW] 💡 Serving HEAD from cache: ${url.href}`);
         return new Response('', { status: 200, headers: cached.headers });
       }
-      // No cached match → fall back to network
       try {
+        console.log(`[SW] 📡 Fetching HEAD from network: ${url.href}`);
         return await fetch(event.request);
       } catch {
+        console.warn(`[SW] ❌ HEAD fetch failed: ${url.href}`);
         return new Response('', { status: 404 });
       }
     })());
     return;
   }
 
-  // Runtime caching for selected external hosts
-  const runtimeHosts = [
-    'geo.poki.io',
-    'leveldata.poki.io',
-    'securepubads.g.doubleclick.net',
-    'imasdk.googleapis.com',
-    'c.amazon-adsystem.com',
-    'cdn.jsdelivr.net',
-    'config.aps.amazon-adsystem.com',
-    's0.2mdn.net'
-  ];
-
-  if (runtimeHosts.includes(url.hostname)) {
-    event.respondWith(
-      caches.open(RUNTIME_CACHE).then(async cache => {
-        const cached = await cache.match(event.request, { ignoreSearch: true });
-        if (cached) {
-          console.log(`[SW] 🌐 Serving external from runtime cache: ${url.href}`);
-          return cached;
-        }
-        console.log(`[SW] 🌐 Fetching & caching external: ${url.href}`);
-        try {
-          const res = await fetch(event.request);
-          if (res.ok) cache.put(event.request, res.clone());
-          return res;
-        } catch (err) {
-          console.warn(`[SW] ❌ External fetch failed: ${url.href}`, err);
-          return new Response('', { status: 200 });
-        }
-      })
-    );
-    return;
-  }
-
-  // Cache‑first for RAW_ASSETS, ignoring query strings for .js/.json
+  // Strategy: Cache-First, then Network, then Runtime Cache, then Fallback
   event.respondWith(
     (async () => {
-      let cached;
-      if (url.pathname.endsWith('.js') || url.pathname.endsWith('.json')) {
-        cached = await caches.match(event.request, { ignoreSearch: true });
-      } else {
-        cached = await caches.match(event.request);
+      // 1. Try to serve from RAW_ASSETS cache first
+      let cachedResponse = await caches.match(event.request, { ignoreSearch: true });
+      if (cachedResponse) {
+        console.log(`[SW] ✅ Serving from static cache: ${url.href}`);
+        return cachedResponse;
       }
 
-      if (cached) {
-        console.log(`[SW] Serving from cache: ${url.href}`);
-        return cached;
+      // 2. If not in static cache, try to serve from runtime cache
+      cachedResponse = await caches.match(event.request);
+      if (cachedResponse) {
+        console.log(`[SW] ✅ Serving from runtime cache: ${url.href}`);
+        return cachedResponse;
       }
 
-      const relPath = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
-      const assetShouldBeCached = RAW_ASSETS.some(asset => asset === relPath);
-
-      if (assetShouldBeCached) {
-        console.warn(`[SW] 🚨 Requested asset SHOULD be cached but is missing: ${relPath}`);
-      } else {
-        console.info(`[SW] ℹ️ Requested asset not in RAW_ASSETS: ${relPath}`);
-      }
-
-      console.log(`[SW] Fetching from network: ${url.href}`);
+      // 3. If not in any cache, go to network
+      console.log(`[SW] 🌐 Fetching from network: ${url.href}`);
       try {
-        return await fetch(event.request);
-      } catch {
+        const networkResponse = await fetch(event.request);
+
+        // Check if the response is valid and cacheable (e.g., successful GET request)
+        if (networkResponse.ok && event.request.method === 'GET' && networkResponse.type === 'basic') {
+          const responseToCache = networkResponse.clone();
+          caches.open(RUNTIME_CACHE_NAME).then(cache => {
+            cache.put(event.request, responseToCache);
+            console.log(`[SW] ✨ Dynamically cached: ${url.href}`);
+          }).catch(err => {
+            console.error(`[SW] ⚠️ Failed to dynamically cache ${url.href}:`, err);
+          });
+        }
+        return networkResponse;
+      } catch (error) {
+        console.error(`[SW] ❌ Network fetch failed for ${url.href}:`, error);
+
+        // 4. Fallback logic if network fails
         if (event.request.mode === 'navigate') {
+          console.log(`[SW] ↩️ Serving index.html fallback for navigation: ${url.href}`);
           return caches.match('index.html');
         }
         if (url.pathname.endsWith('.json')) {
+          console.log(`[SW] ↩️ Serving empty JSON fallback: ${url.href}`);
           return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         if (url.pathname.endsWith('.txt')) {
+          console.log(`[SW] ↩️ Serving empty text fallback: ${url.href}`);
           return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
         }
+        console.log(`[SW] ↩️ Serving generic empty fallback: ${url.href}`);
         return new Response('', { status: 200 });
       }
     })()
   );
 });
+
+
