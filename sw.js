@@ -1,6 +1,7 @@
 const CACHE_NAME = 'RETROBOWL-v1';
 
 const RAW_ASSETS = [
+  // ... (same list as before)
   'index.html',
   'register_sw.js',
   'manifest.json',
@@ -67,23 +68,43 @@ const RAW_ASSETS = [
   'html5game/uph_poki.js'
 ];
 
-// Install: cache all assets
+function assetURL(asset) {
+  return new URL(asset, self.location.origin).href;
+}
+
+// Install: cache all assets, log failures and verify after
 self.addEventListener('install', event => {
   console.log('[SW] 🔧 Install event triggered');
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
       console.log(`[SW] 📦 Opened cache: ${CACHE_NAME}`);
+      const failedAssets = [];
       for (const asset of RAW_ASSETS) {
-        const assetURL = new URL(asset, self.location.origin).href;
         try {
           await cache.add(asset);
-          console.log(`[SW] ✅ Cached: ${assetURL}`);
+          console.log(`[SW] ✅ Cached: ${assetURL(asset)}`);
         } catch (err) {
+          failedAssets.push(asset);
           // Only log if online to avoid spam when offline
-          if (navigator.online) {
-            console.error(`[SW] ❌ Failed to cache: ${assetURL}`, err);
+          if (navigator.onLine) {
+            console.error(`[SW] ❌ Failed to cache: ${assetURL(asset)}`, err);
           }
         }
+      }
+      if (failedAssets.length) {
+        console.warn('[SW] ⚠️ Assets that failed to cache:', failedAssets);
+      }
+
+      // Post-install: check for missing assets in cache
+      const cachedRequests = await cache.keys();
+      const cachedURLs = cachedRequests.map(req => req.url);
+      const missingAssets = RAW_ASSETS.filter(asset => {
+        return !cachedURLs.includes(assetURL(asset));
+      });
+      if (missingAssets.length) {
+        console.warn('[SW] 🕵️ Assets declared but not found in cache after install:', missingAssets);
+      } else {
+        console.log('[SW] 🎉 All declared assets present in cache after install.');
       }
     }).catch(err => {
       console.error('[SW] 🚨 Cache open failed:', err);
@@ -121,11 +142,22 @@ self.addEventListener('fetch', event => {
   }
 
   event.respondWith(
-    caches.match(event.request, { ignoreSearch: true }).then(cached => {
+    caches.match(event.request, { ignoreSearch: true }).then(async cached => {
       if (cached) {
         console.log(`[SW] Serving from cache: ${url.href}`);
         return cached;
       }
+
+      // DEBUG: Is this asset supposed to be cached?
+      const relPath = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+      const assetShouldBeCached = RAW_ASSETS.some(asset => asset === relPath);
+
+      if (assetShouldBeCached) {
+        console.warn(`[SW] 🚨 Requested asset SHOULD be cached but is missing: ${relPath}`);
+      } else {
+        console.info(`[SW] ℹ️ Requested asset not in RAW_ASSETS: ${relPath}`);
+      }
+
       console.log(`[SW] Fetching from network: ${url.href}`);
       return fetch(event.request).catch(() => {
         // Offline fallback logic
