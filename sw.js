@@ -127,6 +127,8 @@ self.addEventListener('activate', event => {
   );
 });
 
+const RUNTIME_CACHE = 'runtime-third-party';
+
 // Cache‑first fetch handler with query‑string tolerance & safe fallbacks
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
@@ -141,6 +143,41 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // Runtime caching for selected external hosts
+  const runtimeHosts = [
+    'geo.poki.io',
+    'leveldata.poki.io',
+    'securepubads.g.doubleclick.net',
+    'imasdk.googleapis.com',
+    'c.amazon-adsystem.com',
+    'cdn.jsdelivr.net',
+    'config.aps.amazon-adsystem.com',
+    's0.2mdn.net'
+  ];
+
+  if (runtimeHosts.includes(url.hostname)) {
+    event.respondWith(
+      caches.open(RUNTIME_CACHE).then(async cache => {
+        const cached = await cache.match(event.request);
+        if (cached) {
+          console.log(`[SW] 🌐 Serving external from runtime cache: ${url.href}`);
+          return cached;
+        }
+        console.log(`[SW] 🌐 Fetching & caching external: ${url.href}`);
+        try {
+          const res = await fetch(event.request);
+          if (res.ok) cache.put(event.request, res.clone());
+          return res;
+        } catch (err) {
+          console.warn(`[SW] ❌ External fetch failed: ${url.href}`, err);
+          return new Response('', { status: 200 });
+        }
+      })
+    );
+    return;
+  }
+
+  // Your existing cache‑first for RAW_ASSETS
   event.respondWith(
     caches.match(event.request, { ignoreSearch: true }).then(async cached => {
       if (cached) {
@@ -148,7 +185,6 @@ self.addEventListener('fetch', event => {
         return cached;
       }
 
-      // DEBUG: Is this asset supposed to be cached?
       const relPath = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
       const assetShouldBeCached = RAW_ASSETS.some(asset => asset === relPath);
 
@@ -160,11 +196,9 @@ self.addEventListener('fetch', event => {
 
       console.log(`[SW] Fetching from network: ${url.href}`);
       return fetch(event.request).catch(() => {
-        // Offline fallback logic
         if (event.request.mode === 'navigate') {
           return caches.match('index.html');
         }
-        // Return safe stubs for known file types
         if (url.pathname.endsWith('.json')) {
           return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
