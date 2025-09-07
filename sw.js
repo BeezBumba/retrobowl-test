@@ -142,6 +142,25 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // ✅ Handle HEAD requests for cached assets (GameMaker file_exists)
+  if (event.request.method === 'HEAD') {
+    event.respondWith((async () => {
+      // Try to match ignoring query strings so versioned URLs still work
+      const cached = await caches.match(event.request, { ignoreSearch: true });
+      if (cached) {
+        // Return empty body but preserve headers so HEAD check passes
+        return new Response('', { status: 200, headers: cached.headers });
+      }
+      // No cached match → fall back to network
+      try {
+        return await fetch(event.request);
+      } catch {
+        return new Response('', { status: 404 });
+      }
+    })());
+    return;
+  }
+
   // Runtime caching for selected external hosts
   const runtimeHosts = [
     'geo.poki.io',
