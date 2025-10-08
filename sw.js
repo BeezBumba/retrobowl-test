@@ -1,5 +1,6 @@
-const CACHE_NAME = 'RETROBOWL-v1';
-const RUNTIME_CACHE_NAME = 'retrobowl-runtime-cache'; // New cache for dynamic resources
+const CACHE_NAME = 'RETROBOWL-v2'; // Increment version to force cache update
+const RUNTIME_CACHE_NAME = 'retrobowl-runtime-cache-v2';
+const GAME_DATA_CACHE_NAME = 'retrobowl-gamedata-cache-v1'; // New cache for game data
 
 const RAW_ASSETS = [
   'index.html',
@@ -68,46 +69,76 @@ const RAW_ASSETS = [
   'html5game/uph_poki.js'
 ];
 
+// Game data URLs that need network-first caching
+const GAME_DATA_URLS = [
+  'leveldata.poki.io/data',
+  'geo.poki.io'
+];
+
 function assetURL(asset) {
   return new URL(asset, self.location.origin).href;
+}
+
+// Check if URL is a game data endpoint
+function isGameDataURL(url) {
+  return GAME_DATA_URLS.some(gameDataUrl => url.includes(gameDataUrl));
+}
+
+// Check if URL is a critical game resource
+function isCriticalGameResource(url) {
+  const criticalPatterns = [
+    '/html5game/',
+    '/sdk/',
+    'RetroBowl.js',
+    'poki-sdk'
+  ];
+  return criticalPatterns.some(pattern => url.includes(pattern));
 }
 
 // Install: cache all assets, log failures and verify after
 self.addEventListener('install', event => {
   console.log('[SW] 🔧 Install event triggered');
   event.waitUntil(
-    caches.open(CACHE_NAME).then(async cache => {
-      console.log(`[SW] 📦 Opened cache: ${CACHE_NAME}`);
-      const failedAssets = [];
-      for (const asset of RAW_ASSETS) {
-        try {
-          await cache.add(asset);
-          console.log(`[SW] ✅ Cached: ${assetURL(asset)}`);
-        } catch (err) {
-          failedAssets.push(asset);
-          // Only log if online to avoid spam when offline
-          if (navigator.onLine) {
-            console.error(`[SW] ❌ Failed to cache: ${assetURL(asset)}`, err);
+    Promise.all([
+      // Cache static assets
+      caches.open(CACHE_NAME).then(async cache => {
+        console.log(`[SW] 📦 Opened cache: ${CACHE_NAME}`);
+        const failedAssets = [];
+        for (const asset of RAW_ASSETS) {
+          try {
+            await cache.add(asset);
+            console.log(`[SW] ✅ Cached: ${assetURL(asset)}`);
+          } catch (err) {
+            failedAssets.push(asset);
+            // Only log if online to avoid spam when offline
+            if (navigator.onLine) {
+              console.error(`[SW] ❌ Failed to cache: ${assetURL(asset)}`, err);
+            }
           }
         }
-      }
-      if (failedAssets.length) {
-        console.warn('[SW] ⚠️ Assets that failed to cache:', failedAssets);
-      }
+        if (failedAssets.length) {
+          console.warn('[SW] ⚠️ Assets that failed to cache:', failedAssets);
+        }
 
-      // Post-install: check for missing assets in cache
-      const cachedRequests = await cache.keys();
-      const cachedURLs = cachedRequests.map(req => req.url);
-      const missingAssets = RAW_ASSETS.filter(asset => {
-        return !cachedURLs.includes(assetURL(asset));
-      });
-      if (missingAssets.length) {
-        console.warn('[SW] 🕵️ Assets declared but not found in cache after install:', missingAssets);
-      } else {
-        console.log('[SW] 🎉 All declared assets present in cache after install.');
-      }
-    }).catch(err => {
-      console.error('[SW] 🚨 Cache open failed:', err);
+        // Post-install: check for missing assets in cache
+        const cachedRequests = await cache.keys();
+        const cachedURLs = cachedRequests.map(req => req.url);
+        const missingAssets = RAW_ASSETS.filter(asset => {
+          return !cachedURLs.includes(assetURL(asset));
+        });
+        if (missingAssets.length) {
+          console.warn('[SW] 🕵️ Assets declared but not found in cache after install:', missingAssets);
+        } else {
+          console.log('[SW] 🎉 All declared assets present in cache after install.');
+        }
+      }),
+      
+      // Initialize game data cache
+      caches.open(GAME_DATA_CACHE_NAME).then(cache => {
+        console.log(`[SW] 📦 Initialized game data cache: ${GAME_DATA_CACHE_NAME}`);
+      })
+    ]).catch(err => {
+      console.error('[SW] 🚨 Cache initialization failed:', err);
     })
   );
 });
@@ -118,7 +149,11 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
-        keys.filter(key => key !== CACHE_NAME && key !== RUNTIME_CACHE_NAME).map(key => { // Also clean up new runtime cache
+        keys.filter(key => 
+          key !== CACHE_NAME && 
+          key !== RUNTIME_CACHE_NAME && 
+          key !== GAME_DATA_CACHE_NAME
+        ).map(key => {
           console.log(`[SW] 🗑 Deleting old cache: ${key}`);
           return caches.delete(key);
         })
@@ -160,60 +195,138 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Strategy: Cache-First, then Network, then Runtime Cache, then Fallback
-  event.respondWith(
-    (async () => {
-      // 1. Try to serve from RAW_ASSETS cache first
-      let cachedResponse = await caches.match(event.request, { ignoreSearch: true });
-      if (cachedResponse) {
-        console.log(`[SW] ✅ Serving from static cache: ${url.href}`);
-        return cachedResponse;
-      }
-
-      // 2. If not in static cache, try to serve from runtime cache
-      cachedResponse = await caches.match(event.request);
-      if (cachedResponse) {
-        console.log(`[SW] ✅ Serving from runtime cache: ${url.href}`);
-        return cachedResponse;
-      }
-
-      // 3. If not in any cache, go to network
-      console.log(`[SW] 🌐 Fetching from network: ${url.href}`);
-      try {
-        const networkResponse = await fetch(event.request);
-
-        // Check if the response is valid and cacheable (e.g., successful GET request)
-        if (networkResponse.ok && event.request.method === 'GET' && networkResponse.type === 'basic') {
-          const responseToCache = networkResponse.clone();
-          caches.open(RUNTIME_CACHE_NAME).then(cache => {
-            cache.put(event.request, responseToCache);
-            console.log(`[SW] ✨ Dynamically cached: ${url.href}`);
-          }).catch(err => {
-            console.error(`[SW] ⚠️ Failed to dynamically cache ${url.href}:`, err);
-          });
-        }
-        return networkResponse;
-      } catch (error) {
-        console.error(`[SW] ❌ Network fetch failed for ${url.href}:`, error);
-
-        // 4. Fallback logic if network fails
-        if (event.request.mode === 'navigate') {
-          console.log(`[SW] ↩️ Serving index.html fallback for navigation: ${url.href}`);
-          return caches.match('index.html');
-        }
-        if (url.pathname.endsWith('.json')) {
-          console.log(`[SW] ↩️ Serving empty JSON fallback: ${url.href}`);
-          return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
-        }
-        if (url.pathname.endsWith('.txt')) {
-          console.log(`[SW] ↩️ Serving empty text fallback: ${url.href}`);
-          return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
-        }
-        console.log(`[SW] ↩️ Serving generic empty fallback: ${url.href}`);
-        return new Response('', { status: 200 });
-      }
-    })()
-  );
+  // Strategy selection based on resource type
+  if (isGameDataURL(url.href)) {
+    // Network First strategy for game data
+    event.respondWith(handleGameDataRequest(event.request));
+  } else {
+    // Cache First strategy for static assets
+    event.respondWith(handleStaticAssetRequest(event.request));
+  }
 });
 
+// Network First strategy for critical game data
+async function handleGameDataRequest(request) {
+  const url = new URL(request.url);
+  console.log(`[SW] 🎮 Handling game data request: ${url.href}`);
 
+  try {
+    // Try network first
+    console.log(`[SW] 🌐 Fetching game data from network: ${url.href}`);
+    const networkResponse = await fetch(request);
+    
+    if (networkResponse.ok) {
+      // Cache successful response
+      const responseToCache = networkResponse.clone();
+      const cache = await caches.open(GAME_DATA_CACHE_NAME);
+      await cache.put(request, responseToCache);
+      console.log(`[SW] ✨ Cached game data: ${url.href}`);
+      return networkResponse;
+    } else {
+      throw new Error(`Network response not ok: ${networkResponse.status}`);
+    }
+  } catch (error) {
+    console.error(`[SW] ❌ Network fetch failed for game data ${url.href}:`, error);
+    
+    // Fall back to cached version
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) {
+      console.log(`[SW] ✅ Serving game data from cache: ${url.href}`);
+      return cachedResponse;
+    }
+    
+    // Provide meaningful fallback for specific endpoints
+    if (url.href.includes('leveldata.poki.io/data')) {
+      console.log(`[SW] ↩️ Serving default level data fallback: ${url.href}`);
+      // Provide a minimal valid response that allows the game to function
+      const fallbackData = {
+        levels: [],
+        version: "offline",
+        timestamp: Date.now()
+      };
+      return new Response(JSON.stringify(fallbackData), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (url.href.includes('geo.poki.io')) {
+      console.log(`[SW] ↩️ Serving default geo data fallback: ${url.href}`);
+      const fallbackGeoData = {
+        country: "US",
+        region: "offline"
+      };
+      return new Response(JSON.stringify(fallbackGeoData), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Generic JSON fallback
+    console.log(`[SW] ↩️ Serving generic JSON fallback: ${url.href}`);
+    return new Response('{}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Cache First strategy for static assets
+async function handleStaticAssetRequest(request) {
+  const url = new URL(request.url);
+  
+  // 1. Try to serve from static cache first
+  let cachedResponse = await caches.match(request, { ignoreSearch: true });
+  if (cachedResponse) {
+    console.log(`[SW] ✅ Serving from static cache: ${url.href}`);
+    return cachedResponse;
+  }
+
+  // 2. If not in static cache, try runtime cache
+  cachedResponse = await caches.match(request);
+  if (cachedResponse) {
+    console.log(`[SW] ✅ Serving from runtime cache: ${url.href}`);
+    return cachedResponse;
+  }
+
+  // 3. If not in any cache, go to network
+  console.log(`[SW] 🌐 Fetching from network: ${url.href}`);
+  try {
+    const networkResponse = await fetch(request);
+
+    // Cache successful GET requests for basic resources
+    if (networkResponse.ok && request.method === 'GET' && networkResponse.type === 'basic') {
+      const responseToCache = networkResponse.clone();
+      const cacheName = isCriticalGameResource(url.href) ? CACHE_NAME : RUNTIME_CACHE_NAME;
+      
+      caches.open(cacheName).then(cache => {
+        cache.put(request, responseToCache);
+        console.log(`[SW] ✨ Dynamically cached: ${url.href}`);
+      }).catch(err => {
+        console.error(`[SW] ⚠️ Failed to dynamically cache ${url.href}:`, err);
+      });
+    }
+    return networkResponse;
+  } catch (error) {
+    console.error(`[SW] ❌ Network fetch failed for ${url.href}:`, error);
+
+    // 4. Fallback logic if network fails
+    if (request.mode === 'navigate') {
+      console.log(`[SW] ↩️ Serving index.html fallback for navigation: ${url.href}`);
+      return caches.match('index.html');
+    }
+    
+    if (url.pathname.endsWith('.json')) {
+      console.log(`[SW] ↩️ Serving empty JSON fallback: ${url.href}`);
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    
+    if (url.pathname.endsWith('.txt')) {
+      console.log(`[SW] ↩️ Serving empty text fallback: ${url.href}`);
+      return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
+    }
+    
+    console.log(`[SW] ↩️ Serving generic empty fallback: ${url.href}`);
+    return new Response('', { status: 200 });
+  }
+}
