@@ -1,6 +1,6 @@
-const CACHE_NAME = 'RETROBOWL-v2'; // Increment version to force cache update
-const RUNTIME_CACHE_NAME = 'retrobowl-runtime-cache-v2';
-const GAME_DATA_CACHE_NAME = 'retrobowl-gamedata-cache-v1'; // New cache for game data
+const CACHE_NAME = 'RETROBOWL-v3'; // Increment version to force cache update
+const RUNTIME_CACHE_NAME = 'retrobowl-runtime-cache-v3';
+const GAME_DATA_CACHE_NAME = 'retrobowl-gamedata-cache-v2'; // New cache for game data
 
 const RAW_ASSETS = [
   'index.html',
@@ -75,6 +75,20 @@ const GAME_DATA_URLS = [
   'geo.poki.io'
 ];
 
+// Game files that might not exist but should have fallbacks
+const OPTIONAL_GAME_FILES = [
+  'uniforms_custom_1.txt',
+  'uniforms_custom_2.txt',
+  'uniforms_custom_3.txt',
+  'uniforms_custom_4.txt',
+  'uniforms_custom_5.txt',
+  'savedata.ini',
+  'savedata2.ini',
+  'savedata3.ini',
+  'savedata4.ini',
+  'savedata5.ini'
+];
+
 function assetURL(asset) {
   return new URL(asset, self.location.origin).href;
 }
@@ -93,6 +107,34 @@ function isCriticalGameResource(url) {
     'poki-sdk'
   ];
   return criticalPatterns.some(pattern => url.includes(pattern));
+}
+
+// Check if this is an optional game file that might not exist
+function isOptionalGameFile(url) {
+  return OPTIONAL_GAME_FILES.some(file => url.includes(file));
+}
+
+// Generate default content for missing game files
+function getDefaultFileContent(filename) {
+  if (filename.includes('uniforms_custom')) {
+    // Return default uniform data
+    return `[Team]
+name=Custom Team
+primary_color=255,0,0
+secondary_color=255,255,255
+logo=default`;
+  }
+  
+  if (filename.includes('savedata')) {
+    // Return empty save data structure
+    return `[Save]
+version=1.0
+created=0
+modified=0`;
+  }
+  
+  // Default empty content
+  return '';
 }
 
 // Install: cache all assets, log failures and verify after
@@ -179,11 +221,20 @@ self.addEventListener('fetch', event => {
   // Handle HEAD requests for cached assets (GameMaker file_exists)
   if (event.request.method === 'HEAD') {
     event.respondWith((async () => {
+      // First check static cache
       const cached = await caches.match(event.request, { ignoreSearch: true });
       if (cached) {
         console.log(`[SW] 💡 Serving HEAD from cache: ${url.href}`);
         return new Response('', { status: 200, headers: cached.headers });
       }
+      
+      // Check if this is an optional file that might not exist
+      if (isOptionalGameFile(url.href)) {
+        console.log(`[SW] 💡 Optional file HEAD request: ${url.href}`);
+        // Return 404 for optional files that don't exist - this is expected behavior
+        return new Response('', { status: 404 });
+      }
+      
       try {
         console.log(`[SW] 📡 Fetching HEAD from network: ${url.href}`);
         return await fetch(event.request);
@@ -314,6 +365,17 @@ async function handleStaticAssetRequest(request) {
     if (request.mode === 'navigate') {
       console.log(`[SW] ↩️ Serving index.html fallback for navigation: ${url.href}`);
       return caches.match('index.html');
+    }
+    
+    // Handle optional game files that might not exist
+    if (isOptionalGameFile(url.href)) {
+      const filename = url.pathname.split('/').pop();
+      const defaultContent = getDefaultFileContent(filename);
+      console.log(`[SW] ↩️ Serving default content for optional file: ${url.href}`);
+      return new Response(defaultContent, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' }
+      });
     }
     
     if (url.pathname.endsWith('.json')) {
