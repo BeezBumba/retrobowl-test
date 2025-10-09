@@ -1,6 +1,6 @@
-const CACHE_NAME = 'RETROBOWL-v3'; // Increment version to force cache update
-const RUNTIME_CACHE_NAME = 'retrobowl-runtime-cache-v3';
-const GAME_DATA_CACHE_NAME = 'retrobowl-gamedata-cache-v2'; // New cache for game data
+const CACHE_NAME = 'RETROBOWL-v4'; // Increment version to force cache update
+const RUNTIME_CACHE_NAME = 'retrobowl-runtime-cache-v4';
+const GAME_DATA_CACHE_NAME = 'retrobowl-gamedata-cache-v3';
 
 const RAW_ASSETS = [
   'index.html',
@@ -114,10 +114,14 @@ function isOptionalGameFile(url) {
   return OPTIONAL_GAME_FILES.some(file => url.includes(file));
 }
 
+// Check if this is a game file request (html5game directory)
+function isGameFileRequest(url) {
+  return url.includes('/html5game/');
+}
+
 // Generate default content for missing game files
 function getDefaultFileContent(filename) {
   if (filename.includes('uniforms_custom')) {
-    // Return default uniform data
     return `[Team]
 name=Custom Team
 primary_color=255,0,0
@@ -126,11 +130,23 @@ logo=default`;
   }
   
   if (filename.includes('savedata')) {
-    // Return empty save data structure
     return `[Save]
 version=1.0
 created=0
 modified=0`;
+  }
+  
+  if (filename.includes('Achievements.txt')) {
+    // Provide a minimal achievements file
+    return `achievement_1=First Victory
+achievement_2=Season Champion
+achievement_3=Perfect Season`;
+  }
+  
+  if (filename.includes('LanguageUS_FR.txt')) {
+    // Provide empty language file
+    return `[Language]
+version=1.0`;
   }
   
   // Default empty content
@@ -230,9 +246,15 @@ self.addEventListener('fetch', event => {
       
       // Check if this is an optional file that might not exist
       if (isOptionalGameFile(url.href)) {
-        console.log(`[SW] 💡 Optional file HEAD request: ${url.href}`);
+        console.log(`[SW] 💡 Optional file HEAD request (returning 404): ${url.href}`);
         // Return 404 for optional files that don't exist - this is expected behavior
         return new Response('', { status: 404 });
+      }
+      
+      // For game files that should exist but aren't cached, return 200
+      if (isGameFileRequest(url.href)) {
+        console.log(`[SW] 💡 Game file HEAD request (returning 200): ${url.href}`);
+        return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
       }
       
       try {
@@ -365,6 +387,17 @@ async function handleStaticAssetRequest(request) {
     if (request.mode === 'navigate') {
       console.log(`[SW] ↩️ Serving index.html fallback for navigation: ${url.href}`);
       return caches.match('index.html');
+    }
+    
+    // Special handling for game files
+    if (isGameFileRequest(url.href)) {
+      const filename = url.pathname.split('/').pop();
+      const defaultContent = getDefaultFileContent(filename);
+      console.log(`[SW] ↩️ Serving default content for game file: ${url.href}`);
+      return new Response(defaultContent, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' }
+      });
     }
     
     // Handle optional game files that might not exist
