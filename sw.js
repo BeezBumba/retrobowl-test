@@ -1,9 +1,8 @@
-const CACHE_NAME = 'RETROBOWL-v6';
-const RUNTIME_CACHE_NAME = 'retrobowl-runtime-v6';
-const GAME_DATA_CACHE_NAME = 'retrobowl-gamedata-v6';
+const CACHE_NAME = 'RETROBOWL-v7';
+const RUNTIME_CACHE_NAME = 'retrobowl-runtime-v7';
 
-// Critical game files with fallback content
-const GAME_FILE_CONTENT = {
+// Game file content - comprehensive fallbacks
+const GAME_FILES = {
   'Achievements.txt': `achievement_1=First Victory
 achievement_2=Season Champion
 achievement_3=Perfect Season
@@ -13,7 +12,12 @@ achievement_6=Rookie of the Year
 achievement_7=MVP Award
 achievement_8=Championship Ring
 achievement_9=Perfect Game
-achievement_10=Legend Status`,
+achievement_10=Legend Status
+achievement_11=Undefeated Season
+achievement_12=Triple Crown
+achievement_13=Comeback King
+achievement_14=Defensive Player
+achievement_15=Offensive Powerhouse`,
   
   'LanguageUS.txt': `[Language]
 version=1.0
@@ -23,16 +27,24 @@ version=1.0
 @ui_Continue=CONTINUE
 @ui_Options=OPTIONS
 @ui_Credits=CREDITS
+@ui_SaveSlot1=SAVE SLOT 1
+@ui_SaveSlot2=SAVE SLOT 2
+@ui_SaveSlot3=SAVE SLOT 3
+@ui_SaveSlot4=SAVE SLOT 4
+@ui_SaveSlot5=SAVE SLOT 5
 @conf_AFC=AFC
 @conf_NFC=NFC
 @division_East=East
 @division_West=West
 @division_North=North
 @division_South=South
-@ui_Version_Mode=Version Mode`,
+@ui_Version_Mode=Version Mode
+@btn_ExhibitionGame=EXHIBITION GAME`,
   
   'LanguageUS_FR.txt': `[Language]
-version=1.0`,
+version=1.0
+@ui_Title=RETRO BOWL
+@ui_NewGame=NOUVEAU JEU`,
   
   'Teams.txt': `[Teams]
 team_count=32
@@ -77,7 +89,12 @@ Tom
 Steve
 Dan
 Paul
-Mark`,
+Mark
+Alex
+Ryan
+Kevin
+Brian
+Jason`,
   
   'Names_F1.txt': `Sarah
 Emma
@@ -88,7 +105,12 @@ Anna
 Beth
 Carol
 Diana
-Eve`,
+Eve
+Grace
+Helen
+Iris
+Jane
+Kelly`,
   
   'Names_L.txt': `Smith
 Johnson
@@ -99,12 +121,18 @@ Garcia
 Miller
 Davis
 Rodriguez
-Martinez`,
+Martinez
+Wilson
+Anderson
+Taylor
+Thomas
+Jackson`,
   
   'RetroBowl_History.txt': `[History]
 version=1.0
 season_count=0`,
   
+  // Optional files
   'uniforms_custom_1.txt': `[Team]
 name=Custom Team 1
 primary_color=255,0,0
@@ -161,7 +189,7 @@ created=0
 modified=0`
 };
 
-// Assets to cache during install
+// Assets to cache
 const STATIC_ASSETS = [
   'index.html',
   'register_sw.js',
@@ -176,55 +204,32 @@ const STATIC_ASSETS = [
   'html5game/RetroBowl_texture_1.png',
   'html5game/RetroBowl_texture_2.png',
   'html5game/RetroBowl_texture_3.png',
-  'html5game/sound/worklets/audio-worklet.js',
-  'html5game/snd_audience_dis.ogg',
-  'html5game/snd_audience_fg.ogg',
-  'html5game/snd_beep.ogg',
-  'html5game/snd_beep2.ogg',
-  'html5game/snd_bounce.ogg',
-  'html5game/snd_click.ogg',
-  'html5game/snd_kick.ogg',
-  'html5game/snd_oof1.ogg',
-  'html5game/snd_oof2.ogg',
-  'html5game/snd_error.ogg',
-  'html5game/snd_oof3.ogg',
-  'html5game/snd_post.ogg',
-  'html5game/snd_throw.ogg',
-  'html5game/snd_tackle.ogg',
-  'html5game/snd_audible.ogg',
-  'html5game/snd_timeout.ogg',
-  'html5game/snd_purchase.ogg',
-  'html5game/snd_audience_idle.ogg',
-  'html5game/snd_success.ogg',
-  'html5game/snd_drink.ogg',
-  'html5game/snd_starrating.ogg'
+  'html5game/sound/worklets/audio-worklet.js'
 ];
 
-// Install event - cache static assets
+// Install event
 self.addEventListener('install', event => {
-  console.log('[SW] 🔧 Installing service worker...');
+  console.log('[SW] 🔧 Installing...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      console.log('[SW] 📦 Caching static assets...');
-      return cache.addAll(STATIC_ASSETS.map(asset => new Request(asset, {cache: 'reload'})));
+      console.log('[SW] 📦 Caching assets...');
+      return cache.addAll(STATIC_ASSETS);
     }).then(() => {
       console.log('[SW] ✅ Installation complete');
       return self.skipWaiting();
-    }).catch(err => {
-      console.error('[SW] ❌ Installation failed:', err);
     })
   );
 });
 
-// Activate event - clean up old caches
+// Activate event
 self.addEventListener('activate', event => {
-  console.log('[SW] 🚀 Activating service worker...');
+  console.log('[SW] 🚀 Activating...');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE_NAME && cacheName !== GAME_DATA_CACHE_NAME) {
-            console.log('[SW] 🗑 Deleting old cache:', cacheName);
+          if (cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE_NAME) {
+            console.log('[SW] 🗑 Deleting cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -242,90 +247,83 @@ self.addEventListener('fetch', event => {
   const pathname = url.pathname;
   const filename = pathname.split('/').pop();
   
-  console.log(`[SW] 🔍 Intercepting: ${event.request.method} ${url.href}`);
+  console.log(`[SW] 🔍 ${event.request.method} ${url.href}`);
   
-  // Block analytics and ads
+  // Block analytics/ads with proper response
   if (
     url.hostname.includes('cloudflareinsights.com') ||
     url.hostname.includes('cmp.inmobi.com') ||
     url.hostname.includes('googlesyndication.com') ||
     url.hostname.includes('doubleclick.net') ||
     url.hostname.includes('google-analytics.com') ||
-    url.hostname.includes('googletagmanager.com')
+    url.hostname.includes('googletagmanager.com') ||
+    pathname.startsWith('/cdn-cgi/rum')
   ) {
     console.log(`[SW] 🚫 Blocking: ${url.href}`);
-    event.respondWith(new Response('', { status: 204 }));
-    return;
-  }
-  
-  // Handle HEAD requests
-  if (event.request.method === 'HEAD') {
-    event.respondWith(handleHeadRequest(event.request));
+    event.respondWith(new Response(null, { status: 204 }));
     return;
   }
   
   // Handle game data requests
   if (url.hostname.includes('leveldata.poki.io') || url.hostname.includes('geo.poki.io')) {
-    event.respondWith(handleGameDataRequest(event.request));
+    event.respondWith(handleGameData(event.request));
     return;
   }
   
-  // Handle game file requests - THIS IS CRITICAL
-  if (pathname.includes('/html5game/') && pathname.endsWith('.txt')) {
-    console.log(`[SW] 🎮 Game file request: ${filename}`);
-    event.respondWith(handleGameFileRequest(event.request, filename));
+  // Handle game file requests - CRITICAL PATH
+  if (pathname.includes('/html5game/') && (pathname.endsWith('.txt') || pathname.endsWith('.ini'))) {
+    console.log(`[SW] 🎯 GAME FILE: ${filename}`);
+    event.respondWith(handleGameFile(event.request, filename));
+    return;
+  }
+  
+  // Handle HEAD requests for game files
+  if (event.request.method === 'HEAD' && pathname.includes('/html5game/')) {
+    console.log(`[SW] 💡 HEAD for game file: ${filename}`);
+    event.respondWith(handleGameFileHead(event.request, filename));
     return;
   }
   
   // Handle all other requests
-  event.respondWith(handleStaticRequest(event.request));
+  event.respondWith(handleOtherRequest(event.request));
 });
 
-// Handle HEAD requests
-async function handleHeadRequest(request) {
-  const url = new URL(request.url);
-  const filename = url.pathname.split('/').pop();
+// Handle game file requests with guaranteed success
+async function handleGameFile(request, filename) {
+  console.log(`[SW] 🎮 Processing game file: ${filename}`);
   
-  console.log(`[SW] 💡 HEAD request for: ${filename}`);
-  
-  // Check cache first
-  const cached = await caches.match(request);
-  if (cached) {
-    console.log(`[SW] ✅ HEAD from cache: ${url.href}`);
-    return new Response('', { status: 200, headers: cached.headers });
-  }
-  
-  // For game files, return 200 if we have content
-  if (GAME_FILE_CONTENT[filename]) {
-    console.log(`[SW] ✅ HEAD for game file (200): ${filename}`);
-    return new Response('', { 
-      status: 200, 
-      headers: { 'Content-Type': 'text/plain' }
+  // Check if we have predefined content
+  if (GAME_FILES[filename]) {
+    console.log(`[SW] ✅ Serving predefined content for: ${filename}`);
+    const response = new Response(GAME_FILES[filename], {
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        'Content-Type': 'text/plain',
+        'Cache-Control': 'max-age=3600'
+      }
     });
-  }
-  
-  // Try network
-  try {
-    const response = await fetch(request);
-    console.log(`[SW] ✅ HEAD from network: ${url.href}`);
+    
+    // Cache the response
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(request, response.clone());
+    } catch (e) {
+      console.warn('[SW] Failed to cache game file:', e);
+    }
+    
     return response;
-  } catch (error) {
-    console.log(`[SW] ❌ HEAD failed, returning 404: ${url.href}`);
-    return new Response('', { status: 404 });
   }
-}
-
-// Handle game file requests - GUARANTEED SUCCESS
-async function handleGameFileRequest(request, filename) {
-  const url = new URL(request.url);
-  
-  console.log(`[SW] 🎯 Handling game file: ${filename}`);
   
   // Try cache first
-  const cached = await caches.match(request);
-  if (cached) {
-    console.log(`[SW] ✅ Game file from cache: ${filename}`);
-    return cached;
+  try {
+    const cached = await caches.match(request);
+    if (cached) {
+      console.log(`[SW] ✅ Game file from cache: ${filename}`);
+      return cached;
+    }
+  } catch (e) {
+    console.warn('[SW] Cache check failed:', e);
   }
   
   // Try network
@@ -333,57 +331,83 @@ async function handleGameFileRequest(request, filename) {
     const response = await fetch(request);
     if (response.ok) {
       console.log(`[SW] ✅ Game file from network: ${filename}`);
-      // Cache the response
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
+      // Cache successful response
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(request, response.clone());
+      } catch (e) {
+        console.warn('[SW] Failed to cache network response:', e);
+      }
       return response;
     }
-  } catch (error) {
-    console.log(`[SW] ⚠️ Network failed for game file: ${filename}`);
+  } catch (e) {
+    console.warn(`[SW] Network failed for game file: ${filename}`, e);
   }
   
-  // ALWAYS provide fallback content
-  const content = GAME_FILE_CONTENT[filename] || '';
-  console.log(`[SW] ↩️ Serving fallback for: ${filename}`);
-  
-  const response = new Response(content, {
+  // Fallback - return empty content but with 200 status
+  console.log(`[SW] ↩️ Fallback for game file: ${filename}`);
+  return new Response('', {
     status: 200,
+    statusText: 'OK',
     headers: {
       'Content-Type': 'text/plain',
       'Cache-Control': 'max-age=3600'
     }
   });
+}
+
+// Handle HEAD requests for game files
+async function handleGameFileHead(request, filename) {
+  // Always return 200 for game files to indicate they exist
+  if (GAME_FILES[filename]) {
+    console.log(`[SW] ✅ HEAD 200 for predefined: ${filename}`);
+    return new Response(null, {
+      status: 200,
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
   
-  // Cache the fallback
-  const cache = await caches.open(CACHE_NAME);
-  cache.put(request, response.clone());
+  // Check cache
+  try {
+    const cached = await caches.match(request.url.replace('HEAD', 'GET'));
+    if (cached) {
+      console.log(`[SW] ✅ HEAD 200 from cache: ${filename}`);
+      return new Response(null, {
+        status: 200,
+        headers: cached.headers
+      });
+    }
+  } catch (e) {
+    console.warn('[SW] HEAD cache check failed:', e);
+  }
   
-  return response;
+  // For optional files, return 404
+  if (filename.includes('custom') || filename.includes('savedata')) {
+    console.log(`[SW] ✅ HEAD 404 for optional: ${filename}`);
+    return new Response(null, { status: 404 });
+  }
+  
+  // For other game files, return 200 (they should exist)
+  console.log(`[SW] ✅ HEAD 200 for game file: ${filename}`);
+  return new Response(null, {
+    status: 200,
+    headers: { 'Content-Type': 'text/plain' }
+  });
 }
 
 // Handle game data requests
-async function handleGameDataRequest(request) {
+async function handleGameData(request) {
   const url = new URL(request.url);
-  
-  console.log(`[SW] 🎮 Game data request: ${url.href}`);
+  console.log(`[SW] 🎮 Game data: ${url.href}`);
   
   try {
     const response = await fetch(request);
     if (response.ok) {
       console.log(`[SW] ✅ Game data from network: ${url.href}`);
-      const cache = await caches.open(GAME_DATA_CACHE_NAME);
-      cache.put(request, response.clone());
       return response;
     }
-  } catch (error) {
-    console.log(`[SW] ❌ Game data network failed: ${url.href}`);
-  }
-  
-  // Check cache
-  const cached = await caches.match(request);
-  if (cached) {
-    console.log(`[SW] ✅ Game data from cache: ${url.href}`);
-    return cached;
+  } catch (e) {
+    console.warn(`[SW] Game data network failed: ${url.href}`, e);
   }
   
   // Provide fallback
@@ -401,40 +425,52 @@ async function handleGameDataRequest(request) {
   });
 }
 
-// Handle static requests
-async function handleStaticRequest(request) {
+// Handle other requests
+async function handleOtherRequest(request) {
   const url = new URL(request.url);
   
   // Try cache first
-  const cached = await caches.match(request);
-  if (cached) {
-    console.log(`[SW] ✅ Static from cache: ${url.href}`);
-    return cached;
+  try {
+    const cached = await caches.match(request);
+    if (cached) {
+      console.log(`[SW] ✅ From cache: ${url.href}`);
+      return cached;
+    }
+  } catch (e) {
+    console.warn('[SW] Cache check failed:', e);
   }
   
   // Try network
   try {
     const response = await fetch(request);
     if (response.ok) {
-      console.log(`[SW] ✅ Static from network: ${url.href}`);
+      console.log(`[SW] ✅ From network: ${url.href}`);
       // Cache successful responses
-      const cache = await caches.open(RUNTIME_CACHE_NAME);
-      cache.put(request, response.clone());
+      try {
+        const cache = await caches.open(RUNTIME_CACHE_NAME);
+        await cache.put(request, response.clone());
+      } catch (e) {
+        console.warn('[SW] Failed to cache response:', e);
+      }
       return response;
     }
     return response;
-  } catch (error) {
-    console.log(`[SW] ❌ Static request failed: ${url.href}`);
+  } catch (e) {
+    console.warn(`[SW] ❌ Request failed: ${url.href}`, e);
     
     // Navigation fallback
     if (request.mode === 'navigate') {
-      const indexResponse = await caches.match('index.html');
-      if (indexResponse) {
-        console.log(`[SW] ↩️ Navigation fallback: ${url.href}`);
-        return indexResponse;
+      try {
+        const indexResponse = await caches.match('index.html');
+        if (indexResponse) {
+          console.log(`[SW] ↩️ Navigation fallback: ${url.href}`);
+          return indexResponse;
+        }
+      } catch (e) {
+        console.warn('[SW] Navigation fallback failed:', e);
       }
     }
     
-    return new Response('', { status: 404 });
+    return new Response('Not Found', { status: 404 });
   }
 }
