@@ -1,6 +1,6 @@
-const CACHE_NAME = 'RETROBOWL-v4'; // Increment version to force cache update
-const RUNTIME_CACHE_NAME = 'retrobowl-runtime-cache-v4';
-const GAME_DATA_CACHE_NAME = 'retrobowl-gamedata-cache-v3';
+const CACHE_NAME = 'RETROBOWL-v5'; // Increment version to force cache update
+const RUNTIME_CACHE_NAME = 'retrobowl-runtime-cache-v5';
+const GAME_DATA_CACHE_NAME = 'retrobowl-gamedata-cache-v4';
 
 const RAW_ASSETS = [
   'index.html',
@@ -89,6 +89,78 @@ const OPTIONAL_GAME_FILES = [
   'savedata5.ini'
 ];
 
+// Critical game files that MUST return valid content
+const CRITICAL_GAME_FILES = {
+  'Achievements.txt': `achievement_1=First Victory
+achievement_2=Season Champion
+achievement_3=Perfect Season
+achievement_4=Hall of Fame
+achievement_5=Dynasty Builder`,
+  
+  'LanguageUS.txt': `[Language]
+version=1.0
+@ui_Title=RETRO BOWL
+@ui_NewGame=NEW GAME
+@ui_Load=LOAD GAME
+@conf_AFC=AFC
+@conf_NFC=NFC
+@division_East=East
+@division_West=West
+@division_North=North
+@division_South=South`,
+  
+  'LanguageUS_FR.txt': `[Language]
+version=1.0`,
+  
+  'Teams.txt': `[Teams]
+team_count=32`,
+  
+  'uniforms_default.txt': `[Team]
+name=Default Team
+primary_color=255,0,0
+secondary_color=255,255,255
+logo=default`,
+  
+  'PlayerRecords.txt': `[Records]
+version=1.0`,
+  
+  'RetroBowlHOF.txt': `[HallOfFame]
+version=1.0`,
+  
+  'Schedule17.txt': `[Schedule]
+version=1.0`,
+  
+  'Shopping.txt': `[Shop]
+version=1.0`,
+  
+  'Charities.txt': `[Charities]
+version=1.0`,
+  
+  'Colleges.txt': `[Colleges]
+version=1.0`,
+  
+  'Names_F0.txt': `John
+Mike
+David
+Chris
+Matt`,
+  
+  'Names_F1.txt': `Sarah
+Emma
+Lisa
+Amy
+Kate`,
+  
+  'Names_L.txt': `Smith
+Johnson
+Williams
+Brown
+Jones`,
+  
+  'RetroBowl_History.txt': `[History]
+version=1.0`
+};
+
 function assetURL(asset) {
   return new URL(asset, self.location.origin).href;
 }
@@ -119,8 +191,19 @@ function isGameFileRequest(url) {
   return url.includes('/html5game/');
 }
 
-// Generate default content for missing game files
-function getDefaultFileContent(filename) {
+// Get the filename from a URL
+function getFilename(url) {
+  return url.split('/').pop().split('?')[0];
+}
+
+// Generate content for game files
+function getGameFileContent(filename) {
+  // Check if we have specific content for this file
+  if (CRITICAL_GAME_FILES[filename]) {
+    return CRITICAL_GAME_FILES[filename];
+  }
+  
+  // Handle optional files
   if (filename.includes('uniforms_custom')) {
     return `[Team]
 name=Custom Team
@@ -136,24 +219,11 @@ created=0
 modified=0`;
   }
   
-  if (filename.includes('Achievements.txt')) {
-    // Provide a minimal achievements file
-    return `achievement_1=First Victory
-achievement_2=Season Champion
-achievement_3=Perfect Season`;
-  }
-  
-  if (filename.includes('LanguageUS_FR.txt')) {
-    // Provide empty language file
-    return `[Language]
-version=1.0`;
-  }
-  
-  // Default empty content
+  // Default empty content for unknown files
   return '';
 }
 
-// Install: cache all assets, log failures and verify after
+// Install: cache all assets
 self.addEventListener('install', event => {
   console.log('[SW] 🔧 Install event triggered');
   event.waitUntil(
@@ -168,7 +238,6 @@ self.addEventListener('install', event => {
             console.log(`[SW] ✅ Cached: ${assetURL(asset)}`);
           } catch (err) {
             failedAssets.push(asset);
-            // Only log if online to avoid spam when offline
             if (navigator.onLine) {
               console.error(`[SW] ❌ Failed to cache: ${assetURL(asset)}`, err);
             }
@@ -176,18 +245,6 @@ self.addEventListener('install', event => {
         }
         if (failedAssets.length) {
           console.warn('[SW] ⚠️ Assets that failed to cache:', failedAssets);
-        }
-
-        // Post-install: check for missing assets in cache
-        const cachedRequests = await cache.keys();
-        const cachedURLs = cachedRequests.map(req => req.url);
-        const missingAssets = RAW_ASSETS.filter(asset => {
-          return !cachedURLs.includes(assetURL(asset));
-        });
-        if (missingAssets.length) {
-          console.warn('[SW] 🕵️ Assets declared but not found in cache after install:', missingAssets);
-        } else {
-          console.log('[SW] 🎉 All declared assets present in cache after install.');
         }
       }),
       
@@ -223,73 +280,69 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Ignore analytics / Cloudflare RUM / ad beacons
+  // Block analytics and ads to reduce console noise
   if (
     url.pathname.startsWith('/cdn-cgi/rum') ||
     url.hostname.includes('cloudflareinsights.com') ||
-    url.hostname.includes('cmp.inmobi.com')
+    url.hostname.includes('cmp.inmobi.com') ||
+    url.hostname.includes('googlesyndication.com') ||
+    url.hostname.includes('doubleclick.net') ||
+    url.hostname.includes('google-analytics.com')
   ) {
-    console.log(`[SW] 🚫 Blocking analytics/tracking request: ${url.href}`);
+    console.log(`[SW] 🚫 Blocking analytics/ads request: ${url.href}`);
     event.respondWith(new Response(undefined, { status: 204 }));
     return;
   }
 
-  // Handle HEAD requests for cached assets (GameMaker file_exists)
+  // Handle HEAD requests for file existence checks
   if (event.request.method === 'HEAD') {
     event.respondWith((async () => {
-      // First check static cache
+      // Check static cache first
       const cached = await caches.match(event.request, { ignoreSearch: true });
       if (cached) {
-        console.log(`[SW] 💡 Serving HEAD from cache: ${url.href}`);
+        console.log(`[SW] 💡 HEAD from cache: ${url.href}`);
         return new Response('', { status: 200, headers: cached.headers });
       }
       
-      // Check if this is an optional file that might not exist
-      if (isOptionalGameFile(url.href)) {
-        console.log(`[SW] 💡 Optional file HEAD request (returning 404): ${url.href}`);
-        // Return 404 for optional files that don't exist - this is expected behavior
-        return new Response('', { status: 404 });
-      }
-      
-      // For game files that should exist but aren't cached, return 200
+      // For game files, always return 200 if we can provide content
       if (isGameFileRequest(url.href)) {
-        console.log(`[SW] 💡 Game file HEAD request (returning 200): ${url.href}`);
-        return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
+        const filename = getFilename(url.href);
+        if (CRITICAL_GAME_FILES[filename] || isOptionalGameFile(url.href)) {
+          console.log(`[SW] 💡 HEAD for game file (200): ${url.href}`);
+          return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
+        }
       }
       
+      // Try network for other files
       try {
-        console.log(`[SW] 📡 Fetching HEAD from network: ${url.href}`);
+        console.log(`[SW] 📡 HEAD from network: ${url.href}`);
         return await fetch(event.request);
       } catch {
-        console.warn(`[SW] ❌ HEAD fetch failed: ${url.href}`);
+        console.warn(`[SW] ❌ HEAD failed: ${url.href}`);
         return new Response('', { status: 404 });
       }
     })());
     return;
   }
 
-  // Strategy selection based on resource type
+  // Route requests based on type
   if (isGameDataURL(url.href)) {
-    // Network First strategy for game data
     event.respondWith(handleGameDataRequest(event.request));
   } else {
-    // Cache First strategy for static assets
     event.respondWith(handleStaticAssetRequest(event.request));
   }
 });
 
-// Network First strategy for critical game data
+// Network First strategy for game data
 async function handleGameDataRequest(request) {
   const url = new URL(request.url);
   console.log(`[SW] 🎮 Handling game data request: ${url.href}`);
 
   try {
-    // Try network first
     console.log(`[SW] 🌐 Fetching game data from network: ${url.href}`);
     const networkResponse = await fetch(request);
     
     if (networkResponse.ok) {
-      // Cache successful response
       const responseToCache = networkResponse.clone();
       const cache = await caches.open(GAME_DATA_CACHE_NAME);
       await cache.put(request, responseToCache);
@@ -301,17 +354,16 @@ async function handleGameDataRequest(request) {
   } catch (error) {
     console.error(`[SW] ❌ Network fetch failed for game data ${url.href}:`, error);
     
-    // Fall back to cached version
+    // Check cache
     const cachedResponse = await caches.match(request);
     if (cachedResponse) {
       console.log(`[SW] ✅ Serving game data from cache: ${url.href}`);
       return cachedResponse;
     }
     
-    // Provide meaningful fallback for specific endpoints
+    // Provide fallbacks
     if (url.href.includes('leveldata.poki.io/data')) {
-      console.log(`[SW] ↩️ Serving default level data fallback: ${url.href}`);
-      // Provide a minimal valid response that allows the game to function
+      console.log(`[SW] ↩️ Serving level data fallback: ${url.href}`);
       const fallbackData = {
         levels: [],
         version: "offline",
@@ -324,7 +376,7 @@ async function handleGameDataRequest(request) {
     }
     
     if (url.href.includes('geo.poki.io')) {
-      console.log(`[SW] ↩️ Serving default geo data fallback: ${url.href}`);
+      console.log(`[SW] ↩️ Serving geo data fallback: ${url.href}`);
       const fallbackGeoData = {
         country: "US",
         region: "offline"
@@ -335,8 +387,6 @@ async function handleGameDataRequest(request) {
       });
     }
     
-    // Generic JSON fallback
-    console.log(`[SW] ↩️ Serving generic JSON fallback: ${url.href}`);
     return new Response('{}', {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
@@ -344,30 +394,59 @@ async function handleGameDataRequest(request) {
   }
 }
 
-// Cache First strategy for static assets
+// Cache First strategy for static assets with guaranteed success for game files
 async function handleStaticAssetRequest(request) {
   const url = new URL(request.url);
   
-  // 1. Try to serve from static cache first
+  // 1. Try static cache first
   let cachedResponse = await caches.match(request, { ignoreSearch: true });
   if (cachedResponse) {
     console.log(`[SW] ✅ Serving from static cache: ${url.href}`);
     return cachedResponse;
   }
 
-  // 2. If not in static cache, try runtime cache
+  // 2. Try runtime cache
   cachedResponse = await caches.match(request);
   if (cachedResponse) {
     console.log(`[SW] ✅ Serving from runtime cache: ${url.href}`);
     return cachedResponse;
   }
 
-  // 3. If not in any cache, go to network
-  console.log(`[SW] 🌐 Fetching from network: ${url.href}`);
+  // 3. For game files, ALWAYS provide content (critical for synchronous XMLHttpRequest)
+  if (isGameFileRequest(url.href)) {
+    const filename = getFilename(url.href);
+    
+    // Try network first for game files
+    try {
+      console.log(`[SW] 🌐 Fetching game file from network: ${url.href}`);
+      const networkResponse = await fetch(request);
+      
+      if (networkResponse.ok) {
+        // Cache successful response
+        const responseToCache = networkResponse.clone();
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(request, responseToCache);
+        console.log(`[SW] ✨ Cached game file: ${url.href}`);
+        return networkResponse;
+      }
+    } catch (error) {
+      console.warn(`[SW] ⚠️ Network failed for game file: ${url.href}`);
+    }
+    
+    // ALWAYS provide fallback content for game files
+    const content = getGameFileContent(filename);
+    console.log(`[SW] ↩️ Serving fallback content for game file: ${url.href}`);
+    return new Response(content, {
+      status: 200,
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
+
+  // 4. For non-game files, try network
   try {
+    console.log(`[SW] 🌐 Fetching from network: ${url.href}`);
     const networkResponse = await fetch(request);
 
-    // Cache successful GET requests for basic resources
     if (networkResponse.ok && request.method === 'GET' && networkResponse.type === 'basic') {
       const responseToCache = networkResponse.clone();
       const cacheName = isCriticalGameResource(url.href) ? CACHE_NAME : RUNTIME_CACHE_NAME;
@@ -375,53 +454,23 @@ async function handleStaticAssetRequest(request) {
       caches.open(cacheName).then(cache => {
         cache.put(request, responseToCache);
         console.log(`[SW] ✨ Dynamically cached: ${url.href}`);
-      }).catch(err => {
-        console.error(`[SW] ⚠️ Failed to dynamically cache ${url.href}:`, err);
       });
     }
     return networkResponse;
   } catch (error) {
     console.error(`[SW] ❌ Network fetch failed for ${url.href}:`, error);
 
-    // 4. Fallback logic if network fails
+    // Navigation fallback
     if (request.mode === 'navigate') {
-      console.log(`[SW] ↩️ Serving index.html fallback for navigation: ${url.href}`);
+      console.log(`[SW] ↩️ Serving index.html fallback: ${url.href}`);
       return caches.match('index.html');
     }
     
-    // Special handling for game files
-    if (isGameFileRequest(url.href)) {
-      const filename = url.pathname.split('/').pop();
-      const defaultContent = getDefaultFileContent(filename);
-      console.log(`[SW] ↩️ Serving default content for game file: ${url.href}`);
-      return new Response(defaultContent, {
-        status: 200,
-        headers: { 'Content-Type': 'text/plain' }
-      });
-    }
-    
-    // Handle optional game files that might not exist
-    if (isOptionalGameFile(url.href)) {
-      const filename = url.pathname.split('/').pop();
-      const defaultContent = getDefaultFileContent(filename);
-      console.log(`[SW] ↩️ Serving default content for optional file: ${url.href}`);
-      return new Response(defaultContent, {
-        status: 200,
-        headers: { 'Content-Type': 'text/plain' }
-      });
-    }
-    
+    // Generic fallbacks
     if (url.pathname.endsWith('.json')) {
-      console.log(`[SW] ↩️ Serving empty JSON fallback: ${url.href}`);
       return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     
-    if (url.pathname.endsWith('.txt')) {
-      console.log(`[SW] ↩️ Serving empty text fallback: ${url.href}`);
-      return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
-    }
-    
-    console.log(`[SW] ↩️ Serving generic empty fallback: ${url.href}`);
     return new Response('', { status: 200 });
   }
 }
