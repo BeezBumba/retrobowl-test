@@ -1,5 +1,5 @@
-const CACHE_NAME = 'RETROBOWL-v7';
-const RUNTIME_CACHE_NAME = 'retrobowl-runtime-v7';
+const CACHE_NAME = 'RETROBOWL-v8';
+const RUNTIME_CACHE_NAME = 'retrobowl-runtime-v8';
 
 // Game file content - comprehensive fallbacks
 const GAME_FILES = {
@@ -189,31 +189,104 @@ created=0
 modified=0`
 };
 
-// Assets to cache
+// Assets to cache - EXPANDED to include ALL game assets
 const STATIC_ASSETS = [
+  // Core HTML/JS/Manifest
   'index.html',
   'register_sw.js',
   'manifest.json',
-  'sdk/poki-sdk.js',
   'favicon.ico',
+  
+  // Icons
   'rb192.jpg',
+  'rb400.jpg',
+  'rb64.jpg',
+  
+  // SDK files
+  'sdk/poki-sdk.js',
+  'sdk/core.js/poki-sdk-core-.js',
+  'sdk/details.json',
+  'sdk/settings.json',
+  'sdk/prebid.js',
+  
+  // Game core files
   'html5game/RetroBowl.js',
   'html5game/splash.png',
   'html5game/uph_poki.js',
+  
+  // Textures
   'html5game/RetroBowl_texture_0.png',
   'html5game/RetroBowl_texture_1.png',
   'html5game/RetroBowl_texture_2.png',
   'html5game/RetroBowl_texture_3.png',
-  'html5game/sound/worklets/audio-worklet.js'
+  
+  // Audio worklet
+  'html5game/sound/worklets/audio-worklet.js',
+  
+  // Sound files - ALL OF THEM
+  'html5game/snd_audible.ogg',
+  'html5game/snd_audience_dis.ogg',
+  'html5game/snd_audience_fg.ogg',
+  'html5game/snd_audience_idle.ogg',
+  'html5game/snd_beep.ogg',
+  'html5game/snd_beep2.ogg',
+  'html5game/snd_bounce.ogg',
+  'html5game/snd_click.ogg',
+  'html5game/snd_drink.ogg',
+  'html5game/snd_error.ogg',
+  'html5game/snd_kick.ogg',
+  'html5game/snd_music.ogg',
+  'html5game/snd_oof1.ogg',
+  'html5game/snd_oof2.ogg',
+  'html5game/snd_oof3.ogg',
+  'html5game/snd_post.ogg',
+  'html5game/snd_purchase.ogg',
+  'html5game/snd_starrating.ogg',
+  'html5game/snd_success.ogg',
+  'html5game/snd_tackle.ogg',
+  'html5game/snd_throw.ogg',
+  'html5game/snd_timeout.ogg',
+  
+  // Game data files
+  'html5game/Achievements.txt',
+  'html5game/Charities.txt',
+  'html5game/Colleges.txt',
+  'html5game/LanguageUS.txt',
+  'html5game/LanguageUS_FR.txt',
+  'html5game/Names_F0.txt',
+  'html5game/Names_F1.txt',
+  'html5game/Names_L.txt',
+  'html5game/PlayerRecords.txt',
+  'html5game/RetroBowlHOF.txt',
+  'html5game/RetroBowl_History.txt',
+  'html5game/Schedule17.txt',
+  'html5game/Shopping.txt',
+  'html5game/Teams.txt',
+  'html5game/uniforms_default.txt',
+  'html5game/code.css',
+  'html5game/code.txt',
+  
+  // Third-party resources that should be cached
+  'cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js',
+  'https://c.amazon-adsystem.com/bao-csm/aps_comm/aps_csm.js',
+  'https://cdn.jsdelivr.net/gh/prebid/currency-file@1/latest.json'
 ];
 
-// Install event
+// Install event - with better error handling
 self.addEventListener('install', event => {
-  console.log('[SW] 🔧 Installing...');
+  console.log('[SW] 🔧 Installing v8...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
       console.log('[SW] 📦 Caching assets...');
-      return cache.addAll(STATIC_ASSETS);
+      // Cache files individually to avoid one failure blocking all
+      return Promise.allSettled(
+        STATIC_ASSETS.map(url => {
+          return cache.add(url).catch(err => {
+            console.warn(`[SW] ⚠️ Failed to cache ${url}:`, err.message);
+            return null;
+          });
+        })
+      );
     }).then(() => {
       console.log('[SW] ✅ Installation complete');
       return self.skipWaiting();
@@ -223,13 +296,13 @@ self.addEventListener('install', event => {
 
 // Activate event
 self.addEventListener('activate', event => {
-  console.log('[SW] 🚀 Activating...');
+  console.log('[SW] 🚀 Activating v8...');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
           if (cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE_NAME) {
-            console.log('[SW] 🗑 Deleting cache:', cacheName);
+            console.log('[SW] 🗑 Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -241,7 +314,7 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Fetch event - intercept ALL requests
+// Fetch event - intercept ALL requests with improved matching
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   const pathname = url.pathname;
@@ -284,7 +357,7 @@ self.addEventListener('fetch', event => {
     return;
   }
   
-  // Handle all other requests
+  // Handle all other requests with improved cache matching
   event.respondWith(handleOtherRequest(event.request));
 });
 
@@ -425,13 +498,16 @@ async function handleGameData(request) {
   });
 }
 
-// Handle other requests
+// Handle other requests with improved cache matching
 async function handleOtherRequest(request) {
   const url = new URL(request.url);
   
-  // Try cache first
+  // Try cache first with ignoreSearch for query parameters
   try {
-    const cached = await caches.match(request);
+    const cached = await caches.match(request, { 
+      ignoreSearch: true,
+      ignoreVary: true 
+    });
     if (cached) {
       console.log(`[SW] ✅ From cache: ${url.href}`);
       return cached;
@@ -445,12 +521,14 @@ async function handleOtherRequest(request) {
     const response = await fetch(request);
     if (response.ok) {
       console.log(`[SW] ✅ From network: ${url.href}`);
-      // Cache successful responses
-      try {
-        const cache = await caches.open(RUNTIME_CACHE_NAME);
-        await cache.put(request, response.clone());
-      } catch (e) {
-        console.warn('[SW] Failed to cache response:', e);
+      // Cache successful responses (but not for POST/PUT/DELETE)
+      if (request.method === 'GET') {
+        try {
+          const cache = await caches.open(RUNTIME_CACHE_NAME);
+          await cache.put(request, response.clone());
+        } catch (e) {
+          console.warn('[SW] Failed to cache response:', e);
+        }
       }
       return response;
     }
@@ -469,6 +547,15 @@ async function handleOtherRequest(request) {
       } catch (e) {
         console.warn('[SW] Navigation fallback failed:', e);
       }
+    }
+    
+    // For sound files, return empty audio response instead of 404
+    if (url.pathname.includes('.ogg') || url.pathname.includes('.mp3')) {
+      console.log(`[SW] 🔇 Silent fallback for missing audio: ${url.href}`);
+      return new Response(new ArrayBuffer(0), {
+        status: 200,
+        headers: { 'Content-Type': 'audio/ogg' }
+      });
     }
     
     return new Response('Not Found', { status: 404 });
