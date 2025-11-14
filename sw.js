@@ -1,5 +1,5 @@
-const CACHE_NAME = 'RETROBOWL-v8';
-const RUNTIME_CACHE_NAME = 'retrobowl-runtime-v8';
+const CACHE_NAME = 'RETROBOWL-v9';
+const RUNTIME_CACHE_NAME = 'retrobowl-runtime-v9';
 
 // Game file content - comprehensive fallbacks
 const GAME_FILES = {
@@ -267,14 +267,12 @@ const STATIC_ASSETS = [
   'html5game/code.txt',
   
   // Third-party resources that should be cached
-  'cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js',
-  'https://c.amazon-adsystem.com/bao-csm/aps_comm/aps_csm.js',
-  'https://cdn.jsdelivr.net/gh/prebid/currency-file@1/latest.json'
+  'cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js'
 ];
 
 // Install event - with better error handling
 self.addEventListener('install', event => {
-  console.log('[SW] 🔧 Installing v8...');
+  console.log('[SW] 🔧 Installing v9...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
       console.log('[SW] 📦 Caching assets...');
@@ -296,7 +294,7 @@ self.addEventListener('install', event => {
 
 // Activate event
 self.addEventListener('activate', event => {
-  console.log('[SW] 🚀 Activating v8...');
+  console.log('[SW] 🚀 Activating v9...');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
@@ -343,17 +341,18 @@ self.addEventListener('fetch', event => {
     return;
   }
   
-  // Handle game file requests - CRITICAL PATH
-  if (pathname.includes('/html5game/') && (pathname.endsWith('.txt') || pathname.endsWith('.ini'))) {
-    console.log(`[SW] 🎯 GAME FILE: ${filename}`);
-    event.respondWith(handleGameFile(event.request, filename));
-    return;
-  }
-  
-  // Handle HEAD requests for game files
+  // ⭐ CRITICAL FIX: Handle HEAD requests BEFORE checking for .txt/.ini
+  // This ensures HEAD requests are intercepted even when offline
   if (event.request.method === 'HEAD' && pathname.includes('/html5game/')) {
     console.log(`[SW] 💡 HEAD for game file: ${filename}`);
     event.respondWith(handleGameFileHead(event.request, filename));
+    return;
+  }
+  
+  // Handle game file GET requests - CRITICAL PATH
+  if (pathname.includes('/html5game/') && (pathname.endsWith('.txt') || pathname.endsWith('.ini'))) {
+    console.log(`[SW] 🎯 GAME FILE: ${filename}`);
+    event.respondWith(handleGameFile(event.request, filename));
     return;
   }
   
@@ -373,7 +372,8 @@ async function handleGameFile(request, filename) {
       statusText: 'OK',
       headers: {
         'Content-Type': 'text/plain',
-        'Cache-Control': 'max-age=3600'
+        'Cache-Control': 'max-age=3600',
+        'Content-Length': GAME_FILES[filename].length.toString()
       }
     });
     
@@ -424,47 +424,62 @@ async function handleGameFile(request, filename) {
     statusText: 'OK',
     headers: {
       'Content-Type': 'text/plain',
-      'Cache-Control': 'max-age=3600'
+      'Cache-Control': 'max-age=3600',
+      'Content-Length': '0'
     }
   });
 }
 
-// Handle HEAD requests for game files
+// Handle HEAD requests for game files - CRITICAL FOR OFFLINE
 async function handleGameFileHead(request, filename) {
-  // Always return 200 for game files to indicate they exist
+  console.log(`[SW] 🎯 HEAD request handler for: ${filename}`);
+  
+  // Always return 200 for game files that have predefined content
   if (GAME_FILES[filename]) {
     console.log(`[SW] ✅ HEAD 200 for predefined: ${filename}`);
     return new Response(null, {
       status: 200,
-      headers: { 'Content-Type': 'text/plain' }
+      headers: { 
+        'Content-Type': 'text/plain',
+        'Content-Length': GAME_FILES[filename].length.toString()
+      }
     });
   }
   
-  // Check cache
+  // Check cache for the file
   try {
-    const cached = await caches.match(request.url.replace('HEAD', 'GET'));
+    const getUrl = request.url;
+    const getRequest = new Request(getUrl, { method: 'GET' });
+    const cached = await caches.match(getRequest);
     if (cached) {
       console.log(`[SW] ✅ HEAD 200 from cache: ${filename}`);
       return new Response(null, {
         status: 200,
-        headers: cached.headers
+        headers: {
+          'Content-Type': cached.headers.get('Content-Type') || 'text/plain',
+          'Content-Length': cached.headers.get('Content-Length') || '0'
+        }
       });
     }
   } catch (e) {
     console.warn('[SW] HEAD cache check failed:', e);
   }
   
-  // For optional files, return 404
+  // For optional files that don't exist, return 404
   if (filename.includes('custom') || filename.includes('savedata')) {
     console.log(`[SW] ✅ HEAD 404 for optional: ${filename}`);
     return new Response(null, { status: 404 });
   }
   
-  // For other game files, return 200 (they should exist)
-  console.log(`[SW] ✅ HEAD 200 for game file: ${filename}`);
+  // For all other game files, assume they exist and return 200
+  // This is critical for offline mode - we tell the game the file exists
+  console.log(`[SW] ✅ HEAD 200 (assumed exists): ${filename}`);
   return new Response(null, {
     status: 200,
-    headers: { 'Content-Type': 'text/plain' }
+    headers: { 
+      'Content-Type': 'text/plain',
+      'Content-Length': '100'  // Fake content length
+    }
   });
 }
 
