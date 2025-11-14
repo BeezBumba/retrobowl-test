@@ -4,8 +4,8 @@
 (function() {
   'use strict';
   
-  console.log('[XHR Interceptor v3] 🔧 Installing...');
-  console.log('[XHR Interceptor v3] 📡 navigator.onLine:', navigator.onLine);
+  console.log('[XHR Interceptor v2] 🔧 Installing...');
+  console.log('[XHR Interceptor v2] 📡 navigator.onLine:', navigator.onLine);
   
   // Store the original XMLHttpRequest
   const OriginalXHR = window.XMLHttpRequest;
@@ -29,12 +29,12 @@
       
       // Check if this is a HEAD request for a game file
       const isHead = state.method === 'HEAD';
-      const isHtml5game = state.url.includes('/html5game/');
+      const isHtml5game = state.url.includes('/html5game/') || state.url.startsWith('html5game/');
       const isTxtOrIni = state.url.endsWith('.txt') || state.url.endsWith('.ini');
       
       state.isGameFile = isHead && isHtml5game && isTxtOrIni;
       
-      console.log(`[XHR Interceptor v3] 📋 open() called:`, {
+      console.log(`[XHR Interceptor v2] 📋 open() called:`, {
         method: state.method,
         url: state.url,
         isHead,
@@ -51,7 +51,7 @@
     // Override the send method to handle the intercepted requests
     const originalSend = xhr.send;
     xhr.send = function(body) {
-      console.log(`[XHR Interceptor v3] 📤 send() called:`, {
+      console.log(`[XHR Interceptor v2] 📤 send() called:`, {
         method: state.method,
         url: state.url,
         isGameFile: state.isGameFile,
@@ -59,7 +59,7 @@
       });
       
       if (state.isGameFile && !navigator.onLine) {
-        console.log(`[XHR Interceptor v3] ✅ INTERCEPTING offline HEAD request: ${state.url}`);
+        console.log(`[XHR Interceptor v2] ✅ INTERCEPTING offline HEAD request: ${state.url}`);
         
         // Don't send the request at all - simulate success immediately
         // Set up the XHR object to look like it succeeded
@@ -90,14 +90,14 @@
         
         // Trigger events asynchronously to simulate real XHR behavior
         setTimeout(() => {
-          console.log(`[XHR Interceptor v3] 🎉 Firing success events for: ${state.url}`);
+          console.log(`[XHR Interceptor v2] 🎉 Firing success events for: ${state.url}`);
           
           // Fire readystatechange events
           if (xhr.onreadystatechange) {
             try {
               xhr.onreadystatechange();
             } catch (e) {
-              console.error('[XHR Interceptor v3] ❌ Error in onreadystatechange:', e);
+              console.error('[XHR Interceptor v2] ❌ Error in onreadystatechange:', e);
             }
           }
           
@@ -107,7 +107,7 @@
               const event = new Event('load');
               xhr.onload(event);
             } catch (e) {
-              console.error('[XHR Interceptor v3] ❌ Error in onload:', e);
+              console.error('[XHR Interceptor v2] ❌ Error in onload:', e);
             }
           }
           
@@ -117,16 +117,16 @@
               const event = new Event('loadend');
               xhr.onloadend(event);
             } catch (e) {
-              console.error('[XHR Interceptor v3] ❌ Error in onloadend:', e);
+              console.error('[XHR Interceptor v2] ❌ Error in onloadend:', e);
             }
           }
         }, 0);
         
-        console.log(`[XHR Interceptor v3] 🛑 NOT calling originalSend - request blocked`);
+        console.log(`[XHR Interceptor v2] 🛑 NOT calling originalSend - request blocked`);
         return; // Don't call the original send
       }
       
-      console.log(`[XHR Interceptor v3] ➡️ Passing through to originalSend`);
+      console.log(`[XHR Interceptor v2] ➡️ Passing through to originalSend`);
       // For all other requests, use the original send
       return originalSend.apply(this, [body]);
     };
@@ -148,6 +148,6 @@
   // Replace the global XMLHttpRequest with our custom version
   window.XMLHttpRequest = CustomXHR;
   
-  console.log('[XHR Interceptor v3] ✅ Installed successfully');
-  console.log('[XHR Interceptor v3] 🔍 Waiting for XHR requests...');
+  console.log('[XHR Interceptor v2] ✅ Installed successfully');
+  console.log('[XHR Interceptor v2] 🔍 Waiting for XHR requests...');
 })();
