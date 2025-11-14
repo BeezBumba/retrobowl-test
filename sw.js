@@ -196,7 +196,7 @@ const STATIC_ASSETS = [
   'register_sw.js',
   'manifest.json',
   'favicon.ico',
-  'xhr-interceptor.js',
+  'xhr-interceptor-v2.js',
   
   // Icons
   'rb192.jpg',
