@@ -1,11 +1,11 @@
-// XHR Interceptor v2 for Offline HEAD Request Handling
-// This script intercepts XMLHttpRequest HEAD requests for game files
-// and prevents them from being sent when offline
+// XHR Interceptor v3 for Offline HEAD Request Handling
+// Enhanced with debug logging to diagnose interception issues
 
 (function() {
   'use strict';
   
-  console.log('[XHR Interceptor] 🔧 Installing HEAD request interceptor v2...');
+  console.log('[XHR Interceptor v3] 🔧 Installing...');
+  console.log('[XHR Interceptor v3] 📡 navigator.onLine:', navigator.onLine);
   
   // Store the original XMLHttpRequest
   const OriginalXHR = window.XMLHttpRequest;
@@ -13,26 +13,36 @@
   // Create a custom XMLHttpRequest class
   function CustomXHR() {
     const xhr = new OriginalXHR();
-    let method = '';
-    let url = '';
-    let isGameFile = false;
-    let async = true;
+    const state = {
+      method: '',
+      url: '',
+      isGameFile: false,
+      async: true
+    };
     
     // Override the open method to capture request details
     const originalOpen = xhr.open;
     xhr.open = function(m, u, isAsync, ...args) {
-      method = m.toUpperCase();
-      url = u;
-      async = isAsync !== false;
+      state.method = (m || '').toUpperCase();
+      state.url = u || '';
+      state.async = isAsync !== false;
       
       // Check if this is a HEAD request for a game file
-      isGameFile = method === 'HEAD' && 
-                   (url.includes('/html5game/') && 
-                    (url.endsWith('.txt') || url.endsWith('.ini')));
+      const isHead = state.method === 'HEAD';
+      const isHtml5game = state.url.includes('/html5game/');
+      const isTxtOrIni = state.url.endsWith('.txt') || state.url.endsWith('.ini');
       
-      if (isGameFile) {
-        console.log(`[XHR Interceptor] 🎯 Detected HEAD request: ${url}`);
-      }
+      state.isGameFile = isHead && isHtml5game && isTxtOrIni;
+      
+      console.log(`[XHR Interceptor v3] 📋 open() called:`, {
+        method: state.method,
+        url: state.url,
+        isHead,
+        isHtml5game,
+        isTxtOrIni,
+        isGameFile: state.isGameFile,
+        online: navigator.onLine
+      });
       
       // Call the original open method
       return originalOpen.apply(this, [m, u, isAsync, ...args]);
@@ -41,8 +51,15 @@
     // Override the send method to handle the intercepted requests
     const originalSend = xhr.send;
     xhr.send = function(body) {
-      if (isGameFile && !navigator.onLine) {
-        console.log(`[XHR Interceptor] ✅ Blocking offline HEAD request: ${url}`);
+      console.log(`[XHR Interceptor v3] 📤 send() called:`, {
+        method: state.method,
+        url: state.url,
+        isGameFile: state.isGameFile,
+        online: navigator.onLine
+      });
+      
+      if (state.isGameFile && !navigator.onLine) {
+        console.log(`[XHR Interceptor v3] ✅ INTERCEPTING offline HEAD request: ${state.url}`);
         
         // Don't send the request at all - simulate success immediately
         // Set up the XHR object to look like it succeeded
@@ -66,17 +83,21 @@
           get: function() { return ''; },
           configurable: true 
         });
+        Object.defineProperty(xhr, 'responseURL', { 
+          get: function() { return state.url; },
+          configurable: true 
+        });
         
         // Trigger events asynchronously to simulate real XHR behavior
         setTimeout(() => {
-          console.log(`[XHR Interceptor] 📤 Firing success events for: ${url}`);
+          console.log(`[XHR Interceptor v3] 🎉 Firing success events for: ${state.url}`);
           
           // Fire readystatechange events
           if (xhr.onreadystatechange) {
             try {
               xhr.onreadystatechange();
             } catch (e) {
-              console.error('[XHR Interceptor] Error in onreadystatechange:', e);
+              console.error('[XHR Interceptor v3] ❌ Error in onreadystatechange:', e);
             }
           }
           
@@ -86,7 +107,7 @@
               const event = new Event('load');
               xhr.onload(event);
             } catch (e) {
-              console.error('[XHR Interceptor] Error in onload:', e);
+              console.error('[XHR Interceptor v3] ❌ Error in onload:', e);
             }
           }
           
@@ -96,14 +117,16 @@
               const event = new Event('loadend');
               xhr.onloadend(event);
             } catch (e) {
-              console.error('[XHR Interceptor] Error in onloadend:', e);
+              console.error('[XHR Interceptor v3] ❌ Error in onloadend:', e);
             }
           }
         }, 0);
         
+        console.log(`[XHR Interceptor v3] 🛑 NOT calling originalSend - request blocked`);
         return; // Don't call the original send
       }
       
+      console.log(`[XHR Interceptor v3] ➡️ Passing through to originalSend`);
       // For all other requests, use the original send
       return originalSend.apply(this, [body]);
     };
@@ -125,6 +148,6 @@
   // Replace the global XMLHttpRequest with our custom version
   window.XMLHttpRequest = CustomXHR;
   
-  console.log('[XHR Interceptor] ✅ HEAD request interceptor v2 installed');
-  console.log('[XHR Interceptor] 📡 Online status:', navigator.onLine);
+  console.log('[XHR Interceptor v3] ✅ Installed successfully');
+  console.log('[XHR Interceptor v3] 🔍 Waiting for XHR requests...');
 })();
