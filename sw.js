@@ -210,8 +210,20 @@ async function handleGameFile(request, filename) {
     console.warn(`[SW] Network failed for game file: ${filename}`, e);
   }
   
-  // Fallback - return empty content but with 200 status
-  console.log(`[SW] ↩️ Fallback for game file: ${filename}`);
+  // Fallback - return 404 for optional files, 200 for required files
+  if (filename.includes('savedata') || filename.includes('custom') || filename.includes('optiondata')) {
+    console.log(`[SW] ↩️ Fallback 404 for optional file: ${filename}`);
+    return new Response('', {
+      status: 404,
+      statusText: 'Not Found',
+      headers: {
+        'Content-Type': 'text/plain'
+      }
+    });
+  }
+  
+  // For required files, return empty 200 (shouldn't happen if cached properly)
+  console.log(`[SW] ↩️ Fallback 200 for required file: ${filename}`);
   return new Response('', {
     status: 200,
     statusText: 'OK',
