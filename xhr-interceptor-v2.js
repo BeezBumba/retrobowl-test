@@ -112,26 +112,28 @@
             ok: response.ok
           });
           
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
+          // Capture status before consuming the body
+          const status = response.status;
+          const statusText = response.statusText;
           
-          return response.text();
+          // Don't throw on 404 - optional files are OK to be missing
+          // The game handles 404s gracefully
+          return response.text().then(text => ({ text, status, statusText }));
         })
-        .then(text => {
-          console.log(`[XHR Interceptor v2] ✅ GET success: ${state.url} (${text.length} bytes)`);
+        .then(({ text, status, statusText }) => {
+          console.log(`[XHR Interceptor v2] ✅ GET complete: ${state.url} (${status} ${statusText}, ${text.length} bytes)`);
           
-          // Set up XHR to look like it succeeded
+          // Set up XHR with the actual response status
           Object.defineProperty(xhr, 'readyState', { 
             get: function() { return 4; },
             configurable: true 
           });
           Object.defineProperty(xhr, 'status', { 
-            get: function() { return 200; },
+            get: function() { return status; },
             configurable: true 
           });
           Object.defineProperty(xhr, 'statusText', { 
-            get: function() { return 'OK'; },
+            get: function() { return statusText; },
             configurable: true 
           });
           Object.defineProperty(xhr, 'responseText', { 
