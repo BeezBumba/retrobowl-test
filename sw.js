@@ -1,154 +1,6 @@
 const CACHE_NAME = 'RETROBOWL-v9';
 const RUNTIME_CACHE_NAME = 'retrobowl-runtime-v9';
 
-// Game file content - comprehensive fallbacks
-const GAME_FILES = {
-  'Achievements.txt': `achievement_1=First Victory
-achievement_2=Season Champion
-achievement_3=Perfect Season
-achievement_4=Hall of Fame
-achievement_5=Dynasty Builder
-achievement_6=Rookie of the Year
-achievement_7=MVP Award
-achievement_8=Championship Ring
-achievement_9=Perfect Game
-achievement_10=Legend Status
-achievement_11=Undefeated Season
-achievement_12=Triple Crown
-achievement_13=Comeback King
-achievement_14=Defensive Player
-achievement_15=Offensive Powerhouse`,
-  
-  'LanguageUS.txt': `[Language]
-version=1.0
-@ui_Title=RETRO BOWL
-@ui_NewGame=NEW GAME
-@ui_Load=LOAD GAME
-@ui_Continue=CONTINUE
-@ui_Options=OPTIONS
-@ui_Credits=CREDITS
-@ui_SaveSlot1=SAVE SLOT 1
-@ui_SaveSlot2=SAVE SLOT 2
-@ui_SaveSlot3=SAVE SLOT 3
-@ui_SaveSlot4=SAVE SLOT 4
-@ui_SaveSlot5=SAVE SLOT 5
-@conf_AFC=AFC
-@conf_NFC=NFC
-@division_East=East
-@division_West=West
-@division_North=North
-@division_South=South
-@ui_Version_Mode=Version Mode
-@btn_ExhibitionGame=EXHIBITION GAME`,
-  
-  'LanguageUS_FR.txt': `[Language]
-version=1.0
-@ui_Title=RETRO BOWL
-@ui_NewGame=NOUVEAU JEU`,
-  
-  'Teams.txt': `[Teams]
-team_count=32
-version=1.0`,
-  
-  'uniforms_default.txt': `[Team]
-name=Default Team
-primary_color=255,0,0
-secondary_color=255,255,255
-logo=default`,
-  
-  'PlayerRecords.txt': `[Records]
-version=1.0
-record_count=0`,
-  
-  'RetroBowlHOF.txt': `[HallOfFame]
-version=1.0
-hof_count=0`,
-  
-  'Schedule17.txt': `[Schedule]
-version=1.0
-week_count=17`,
-  
-  'Shopping.txt': `[Shop]
-version=1.0
-item_count=0`,
-  
-  'Charities.txt': `[Charities]
-version=1.0
-charity_count=0`,
-  
-  'Colleges.txt': `[Colleges]
-version=1.0
-college_count=100`,
-  
-  // Names_F0.txt and Names_F1.txt are too large - load from cache
-  'Names_F0.txt': '',
-  'Names_F1.txt': '',
-  
-  // Names_L.txt content is too large (2197 names) - must be loaded from actual file
-  // For now, using empty string - service worker will fetch from network/cache
-  'Names_L.txt': '',
-  
-  'RetroBowl_History.txt': `[History]
-version=1.0
-season_count=0`,
-  
-  // Optional files
-  'uniforms_custom_1.txt': `[Team]
-name=Custom Team 1
-primary_color=255,0,0
-secondary_color=255,255,255
-logo=default`,
-  
-  'uniforms_custom_2.txt': `[Team]
-name=Custom Team 2
-primary_color=0,255,0
-secondary_color=255,255,255
-logo=default`,
-  
-  'uniforms_custom_3.txt': `[Team]
-name=Custom Team 3
-primary_color=0,0,255
-secondary_color=255,255,255
-logo=default`,
-  
-  'uniforms_custom_4.txt': `[Team]
-name=Custom Team 4
-primary_color=255,255,0
-secondary_color=255,255,255
-logo=default`,
-  
-  'uniforms_custom_5.txt': `[Team]
-name=Custom Team 5
-primary_color=255,0,255
-secondary_color=255,255,255
-logo=default`,
-  
-  'savedata.ini': `[Save]
-version=1.0
-created=0
-modified=0`,
-  
-  'savedata2.ini': `[Save]
-version=1.0
-created=0
-modified=0`,
-  
-  'savedata3.ini': `[Save]
-version=1.0
-created=0
-modified=0`,
-  
-  'savedata4.ini': `[Save]
-version=1.0
-created=0
-modified=0`,
-  
-  'savedata5.ini': `[Save]
-version=1.0
-created=0
-modified=0`
-};
-
 // Assets to cache - EXPANDED to include ALL game assets
 const STATIC_ASSETS = [
   // Core HTML/JS/Manifest
@@ -329,30 +181,6 @@ self.addEventListener('fetch', event => {
 async function handleGameFile(request, filename) {
   console.log(`[SW] 🎮 Processing game file: ${filename}`);
   
-  // Check if we have predefined content (and it's not empty)
-  if (GAME_FILES[filename] && GAME_FILES[filename].length > 0) {
-    console.log(`[SW] ✅ Serving predefined content for: ${filename}`);
-    const response = new Response(GAME_FILES[filename], {
-      status: 200,
-      statusText: 'OK',
-      headers: {
-        'Content-Type': 'text/plain',
-        'Cache-Control': 'max-age=3600',
-        'Content-Length': GAME_FILES[filename].length.toString()
-      }
-    });
-    
-    // Cache the response
-    try {
-      const cache = await caches.open(CACHE_NAME);
-      await cache.put(request, response.clone());
-    } catch (e) {
-      console.warn('[SW] Failed to cache game file:', e);
-    }
-    
-    return response;
-  }
-  
   // Try cache first
   try {
     const cached = await caches.match(request);
@@ -398,18 +226,6 @@ async function handleGameFile(request, filename) {
 // Handle HEAD requests for game files - CRITICAL FOR OFFLINE
 async function handleGameFileHead(request, filename) {
   console.log(`[SW] 🎯 HEAD request handler for: ${filename}`);
-  
-  // Always return 200 for game files that have predefined content
-  if (GAME_FILES[filename]) {
-    console.log(`[SW] ✅ HEAD 200 for predefined: ${filename}`);
-    return new Response(null, {
-      status: 200,
-      headers: { 
-        'Content-Type': 'text/plain',
-        'Content-Length': GAME_FILES[filename].length.toString()
-      }
-    });
-  }
   
   // Check cache for the file
   try {
