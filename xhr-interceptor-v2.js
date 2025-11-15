@@ -58,8 +58,8 @@
         online: navigator.onLine
       });
       
-      if (state.isGameFile && !navigator.onLine) {
-        console.log(`[XHR Interceptor v2] ✅ INTERCEPTING offline HEAD request: ${state.url}`);
+      if (state.isGameFile) {
+        console.log(`[XHR Interceptor v2] ✅ INTERCEPTING HEAD request for game file: ${state.url}`);
         
         // Don't send the request at all - simulate success immediately
         // Set up the XHR object to look like it succeeded
