@@ -342,16 +342,20 @@ self.addEventListener('fetch', event => {
     return;
   }
   
+  // Check if this is a game file (handle both absolute and relative URLs)
+  const isGameFilePath = pathname.includes('/html5game/') || pathname.startsWith('html5game/');
+  const isGameFileType = pathname.endsWith('.txt') || pathname.endsWith('.ini');
+  
   // ⭐ CRITICAL FIX: Handle HEAD requests BEFORE checking for .txt/.ini
   // This ensures HEAD requests are intercepted even when offline
-  if (event.request.method === 'HEAD' && pathname.includes('/html5game/')) {
+  if (event.request.method === 'HEAD' && isGameFilePath) {
     console.log(`[SW] 💡 HEAD for game file: ${filename}`);
     event.respondWith(handleGameFileHead(event.request, filename));
     return;
   }
   
   // Handle game file GET requests - CRITICAL PATH
-  if (pathname.includes('/html5game/') && (pathname.endsWith('.txt') || pathname.endsWith('.ini'))) {
+  if (isGameFilePath && isGameFileType) {
     console.log(`[SW] 🎯 GAME FILE: ${filename}`);
     event.respondWith(handleGameFile(event.request, filename));
     return;
