@@ -80,53 +80,13 @@ charity_count=0`,
 version=1.0
 college_count=100`,
   
-  'Names_F0.txt': `John
-Mike
-David
-Chris
-Matt
-Tom
-Steve
-Dan
-Paul
-Mark
-Alex
-Ryan
-Kevin
-Brian
-Jason`,
+  // Names_F0.txt and Names_F1.txt are too large - load from cache
+  'Names_F0.txt': '',
+  'Names_F1.txt': '',
   
-  'Names_F1.txt': `Sarah
-Emma
-Lisa
-Amy
-Kate
-Anna
-Beth
-Carol
-Diana
-Eve
-Grace
-Helen
-Iris
-Jane
-Kelly`,
-  
-  'Names_L.txt': `Smith
-Johnson
-Williams
-Brown
-Jones
-Garcia
-Miller
-Davis
-Rodriguez
-Martinez
-Wilson
-Anderson
-Taylor
-Thomas
-Jackson`,
+  // Names_L.txt content is too large (2197 names) - must be loaded from actual file
+  // For now, using empty string - service worker will fetch from network/cache
+  'Names_L.txt': '',
   
   'RetroBowl_History.txt': `[History]
 version=1.0
@@ -369,8 +329,8 @@ self.addEventListener('fetch', event => {
 async function handleGameFile(request, filename) {
   console.log(`[SW] 🎮 Processing game file: ${filename}`);
   
-  // Check if we have predefined content
-  if (GAME_FILES[filename]) {
+  // Check if we have predefined content (and it's not empty)
+  if (GAME_FILES[filename] && GAME_FILES[filename].length > 0) {
     console.log(`[SW] ✅ Serving predefined content for: ${filename}`);
     const response = new Response(GAME_FILES[filename], {
       status: 200,
