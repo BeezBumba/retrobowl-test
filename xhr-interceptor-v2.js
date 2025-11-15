@@ -1,148 +1,153 @@
-// XHR Interceptor for Retro Bowl PWA Offline Support
-// Intercepts HEAD and GET requests for game files to enable offline functionality
+// XHR Interceptor v3 for Offline HEAD Request Handling
+// Enhanced with debug logging to diagnose interception issues
 
 (function() {
   'use strict';
   
   console.log('[XHR Interceptor v2] 🔧 Installing...');
+  console.log('[XHR Interceptor v2] 📡 navigator.onLine:', navigator.onLine);
   
-  const originalOpen = XMLHttpRequest.prototype.open;
-  const originalSend = XMLHttpRequest.prototype.send;
+  // Store the original XMLHttpRequest
+  const OriginalXHR = window.XMLHttpRequest;
   
-  // Store request state
-  const requestStates = new WeakMap();
-  
-  XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-    // Detect if this is a game file request
-    const isHtml5game = url.includes('/html5game/') || url.startsWith('html5game/');
-    const isTxtOrIni = url.endsWith('.txt') || url.endsWith('.ini');
-    const isGameFile = isHtml5game && isTxtOrIni;
+  // Create a custom XMLHttpRequest class
+  function CustomXHR() {
+    const xhr = new OriginalXHR();
+    const state = {
+      method: '',
+      url: '',
+      isGameFile: false,
+      async: true
+    };
     
-    // Store state for this XHR object
-    requestStates.set(this, {
-      method: method.toUpperCase(),
-      url: url,
-      isGameFile: isGameFile
-    });
-    
-    // Call original open
-    return originalOpen.apply(this, arguments);
-  };
-  
-  XMLHttpRequest.prototype.send = function(body) {
-    const xhr = this;
-    const state = requestStates.get(this) || {};
-    
-    // Only intercept game file requests
-    if (state.isGameFile) {
+    // Override the open method to capture request details
+    const originalOpen = xhr.open;
+    xhr.open = function(m, u, isAsync, ...args) {
+      state.method = (m || '').toUpperCase();
+      state.url = u || '';
+      state.async = isAsync !== false;
       
-      // INTERCEPT HEAD REQUESTS
-      if (state.method === 'HEAD') {
-        console.log(`[XHR Interceptor v2] 🎯 Intercepting HEAD: ${state.url}`);
-        
-        // Fake a successful HEAD response
-        setTimeout(() => {
-          Object.defineProperty(xhr, 'readyState', { 
-            get: function() { return 4; },
-            configurable: true 
-          });
-          Object.defineProperty(xhr, 'status', { 
-            get: function() { return 200; },
-            configurable: true 
-          });
-          Object.defineProperty(xhr, 'statusText', { 
-            get: function() { return 'OK'; },
-            configurable: true 
-          });
-          
-          if (xhr.onreadystatechange) xhr.onreadystatechange();
-          if (xhr.onload) xhr.onload(new Event('load'));
-          if (xhr.onloadend) xhr.onloadend(new Event('loadend'));
-        }, 0);
-        
-        return; // Don't call originalSend
-      }
+      // Check if this is a HEAD request for a game file
+      const isHead = state.method === 'HEAD';
+      const isHtml5game = state.url.includes('/html5game/') || state.url.startsWith('html5game/');
+      const isTxtOrIni = state.url.endsWith('.txt') || state.url.endsWith('.ini');
       
-      // INTERCEPT GET REQUESTS - Use fetch() to trigger service worker
-      if (state.method === 'GET') {
-        console.log(`[XHR Interceptor v2] 📥 Intercepting GET: ${state.url}`);
+      state.isGameFile = isHead && isHtml5game && isTxtOrIni;
+      
+      console.log(`[XHR Interceptor v2] 📋 open() called:`, {
+        method: state.method,
+        url: state.url,
+        isHead,
+        isHtml5game,
+        isTxtOrIni,
+        isGameFile: state.isGameFile,
+        online: navigator.onLine
+      });
+      
+      // Call the original open method
+      return originalOpen.apply(this, [m, u, isAsync, ...args]);
+    };
+    
+    // Override the send method to handle the intercepted requests
+    const originalSend = xhr.send;
+    xhr.send = function(body) {
+      console.log(`[XHR Interceptor v2] 📤 send() called:`, {
+        method: state.method,
+        url: state.url,
+        isGameFile: state.isGameFile,
+        online: navigator.onLine
+      });
+      
+      if (state.isGameFile) {
+        console.log(`[XHR Interceptor v2] ✅ INTERCEPTING HEAD request for game file: ${state.url}`);
         
-        // Convert relative URL to absolute if needed
-        const absoluteUrl = state.url.startsWith('http') ? state.url : 
-                           new URL(state.url, window.location.href).href;
-        
-        // Use fetch() which properly triggers service worker
-        fetch(absoluteUrl, {
-          method: 'GET',
-          credentials: 'same-origin'
-        })
-        .then(response => {
-          console.log(`[XHR Interceptor v2] ✅ Fetch response: ${state.url} (${response.status})`);
-          
-          // Get response text
-          return response.text().then(text => ({
-            status: response.status,
-            statusText: response.statusText,
-            text: text
-          }));
-        })
-        .then(({ status, statusText, text }) => {
-          // Simulate XHR completion
-          Object.defineProperty(xhr, 'readyState', { 
-            get: function() { return 4; },
-            configurable: true 
-          });
-          Object.defineProperty(xhr, 'status', { 
-            get: function() { return status; },
-            configurable: true 
-          });
-          Object.defineProperty(xhr, 'statusText', { 
-            get: function() { return statusText; },
-            configurable: true 
-          });
-          Object.defineProperty(xhr, 'responseText', { 
-            get: function() { return text; },
-            configurable: true 
-          });
-          Object.defineProperty(xhr, 'response', { 
-            get: function() { return text; },
-            configurable: true 
-          });
-          Object.defineProperty(xhr, 'responseURL', { 
-            get: function() { return absoluteUrl; },
-            configurable: true 
-          });
-          
-          // Fire events
-          if (xhr.onreadystatechange) xhr.onreadystatechange();
-          if (xhr.onload) xhr.onload(new Event('load'));
-          if (xhr.onloadend) xhr.onloadend(new Event('loadend'));
-        })
-        .catch(error => {
-          console.error(`[XHR Interceptor v2] ❌ Fetch failed: ${state.url}`, error);
-          
-          // Simulate XHR error
-          Object.defineProperty(xhr, 'readyState', { 
-            get: function() { return 4; },
-            configurable: true 
-          });
-          Object.defineProperty(xhr, 'status', { 
-            get: function() { return 0; },
-            configurable: true 
-          });
-          
-          if (xhr.onerror) xhr.onerror(new Event('error'));
-          if (xhr.onloadend) xhr.onloadend(new Event('loadend'));
+        // Don't send the request at all - simulate success immediately
+        // Set up the XHR object to look like it succeeded
+        Object.defineProperty(xhr, 'readyState', { 
+          get: function() { return 4; },
+          configurable: true 
+        });
+        Object.defineProperty(xhr, 'status', { 
+          get: function() { return 200; },
+          configurable: true 
+        });
+        Object.defineProperty(xhr, 'statusText', { 
+          get: function() { return 'OK'; },
+          configurable: true 
+        });
+        Object.defineProperty(xhr, 'responseText', { 
+          get: function() { return ''; },
+          configurable: true 
+        });
+        Object.defineProperty(xhr, 'response', { 
+          get: function() { return ''; },
+          configurable: true 
+        });
+        Object.defineProperty(xhr, 'responseURL', { 
+          get: function() { return state.url; },
+          configurable: true 
         });
         
-        return; // Don't call originalSend
+        // Trigger events asynchronously to simulate real XHR behavior
+        setTimeout(() => {
+          console.log(`[XHR Interceptor v2] 🎉 Firing success events for: ${state.url}`);
+          
+          // Fire readystatechange events
+          if (xhr.onreadystatechange) {
+            try {
+              xhr.onreadystatechange();
+            } catch (e) {
+              console.error('[XHR Interceptor v2] ❌ Error in onreadystatechange:', e);
+            }
+          }
+          
+          // Fire load event
+          if (xhr.onload) {
+            try {
+              const event = new Event('load');
+              xhr.onload(event);
+            } catch (e) {
+              console.error('[XHR Interceptor v2] ❌ Error in onload:', e);
+            }
+          }
+          
+          // Fire loadend event
+          if (xhr.onloadend) {
+            try {
+              const event = new Event('loadend');
+              xhr.onloadend(event);
+            } catch (e) {
+              console.error('[XHR Interceptor v2] ❌ Error in onloadend:', e);
+            }
+          }
+        }, 0);
+        
+        console.log(`[XHR Interceptor v2] 🛑 NOT calling originalSend - request blocked`);
+        return; // Don't call the original send
       }
-    }
+      
+      console.log(`[XHR Interceptor v2] ➡️ Passing through to originalSend`);
+      // For all other requests, use the original send
+      return originalSend.apply(this, [body]);
+    };
     
-    // For all other requests, use original send
-    return originalSend.apply(this, [body]);
-  };
+    return xhr;
+  }
+  
+  // Copy all static properties and constants from the original XMLHttpRequest
+  CustomXHR.UNSENT = OriginalXHR.UNSENT;
+  CustomXHR.OPENED = OriginalXHR.OPENED;
+  CustomXHR.HEADERS_RECEIVED = OriginalXHR.HEADERS_RECEIVED;
+  CustomXHR.LOADING = OriginalXHR.LOADING;
+  CustomXHR.DONE = OriginalXHR.DONE;
+  
+  // Set up prototype chain
+  Object.setPrototypeOf(CustomXHR.prototype, OriginalXHR.prototype);
+  Object.setPrototypeOf(CustomXHR, OriginalXHR);
+  
+  // Replace the global XMLHttpRequest with our custom version
+  window.XMLHttpRequest = CustomXHR;
   
   console.log('[XHR Interceptor v2] ✅ Installed successfully');
-  
+  console.log('[XHR Interceptor v2] 🔍 Waiting for XHR requests...');
 })();
