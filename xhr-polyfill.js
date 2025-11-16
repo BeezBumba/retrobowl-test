@@ -10,15 +10,51 @@
   
   // Custom XHR implementation
   function FetchBasedXHR() {
-    // State
-    this.readyState = 0; // UNSENT
-    this.response = null;
-    this.responseText = '';
-    this.responseType = '';
-    this.responseURL = '';
-    this.responseXML = null;
-    this.status = 0;
-    this.statusText = '';
+    // Internal state
+    let _readyState = 0;
+    let _response = null;
+    let _responseText = '';
+    let _responseType = '';
+    let _responseURL = '';
+    let _responseXML = null;
+    let _status = 0;
+    let _statusText = '';
+    
+    // Define properties with getters/setters
+    Object.defineProperty(this, 'readyState', {
+      get: () => _readyState,
+      set: (v) => { _readyState = v; }
+    });
+    Object.defineProperty(this, 'response', {
+      get: () => _response,
+      set: (v) => { _response = v; }
+    });
+    Object.defineProperty(this, 'responseText', {
+      get: () => _responseText,
+      set: (v) => { _responseText = v; }
+    });
+    Object.defineProperty(this, 'responseType', {
+      get: () => _responseType,
+      set: (v) => { _responseType = v; }
+    });
+    Object.defineProperty(this, 'responseURL', {
+      get: () => _responseURL,
+      set: (v) => { _responseURL = v; }
+    });
+    Object.defineProperty(this, 'responseXML', {
+      get: () => _responseXML,
+      set: (v) => { _responseXML = v; }
+    });
+    Object.defineProperty(this, 'status', {
+      get: () => _status,
+      set: (v) => { _status = v; }
+    });
+    Object.defineProperty(this, 'statusText', {
+      get: () => _statusText,
+      set: (v) => { _statusText = v; }
+    });
+    
+    // Public properties
     this.timeout = 0;
     this.upload = {};
     this.withCredentials = false;
@@ -51,7 +87,7 @@
     
     // Helper to change ready state
     const changeReadyState = (state) => {
-      this.readyState = state;
+      _readyState = state;
       fireEvent('readystatechange');
     };
     
@@ -108,8 +144,8 @@
         timeoutId = setTimeout(() => {
           _timedOut = true;
           if (_fetchController) _fetchController.abort();
-          this.status = 0;
-          this.statusText = '';
+          _status = 0;
+          _statusText = '';
           changeReadyState(4); // DONE
           fireEvent('timeout');
           fireEvent('loadend');
@@ -125,9 +161,9 @@
           if (timeoutId) clearTimeout(timeoutId);
           
           // Set response properties
-          this.status = response.status;
-          this.statusText = response.statusText;
-          this.responseURL = response.url;
+          _status = response.status;
+          _statusText = response.statusText;
+          _responseURL = response.url;
           
           changeReadyState(3); // LOADING
           
@@ -142,8 +178,8 @@
           if (_aborted || _timedOut) return;
           
           // Set response data
-          this.responseText = text || '';
-          this.response = text || '';
+          _responseText = text || '';
+          _response = text || '';
           
           changeReadyState(4); // DONE
           
@@ -166,8 +202,8 @@
           if (timeoutId) clearTimeout(timeoutId);
           
           // Network error
-          this.status = 0;
-          this.statusText = '';
+          _status = 0;
+          _statusText = '';
           changeReadyState(4); // DONE
           fireEvent('error');
           fireEvent('loadend');
@@ -180,8 +216,8 @@
       if (_fetchController) {
         _fetchController.abort();
       }
-      this.status = 0;
-      this.statusText = '';
+      _status = 0;
+      _statusText = '';
       if (this.readyState > 0 && this.readyState < 4) {
         changeReadyState(4); // DONE
         fireEvent('abort');
