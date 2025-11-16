@@ -50,15 +50,18 @@
         fetch(absUrl)
         .then(r => {
           console.log(`[XHR Interceptor v2] 📥 Fetch response for ${url}: ${r.status}`);
-          return r.text();
+          if (r.status === 404) {
+            return Promise.resolve({ status: 404, text: '' });
+          }
+          return r.text().then(text => ({ status: r.status, text: text }));
         })
-        .then(text => {
-          console.log(`[XHR Interceptor v2] ✅ Got text for ${url}: ${text.length} bytes`);
+        .then(result => {
+          console.log(`[XHR Interceptor v2] ✅ Got text for ${url}: ${result.text.length} bytes (status: ${result.status})`);
           Object.defineProperty(xhr, 'readyState', { writable: true, value: 4 });
-          Object.defineProperty(xhr, 'status', { writable: true, value: 200 });
-          Object.defineProperty(xhr, 'statusText', { writable: true, value: 'OK' });
-          Object.defineProperty(xhr, 'responseText', { writable: true, value: text });
-          Object.defineProperty(xhr, 'response', { writable: true, value: text });
+          Object.defineProperty(xhr, 'status', { writable: true, value: result.status });
+          Object.defineProperty(xhr, 'statusText', { writable: true, value: result.status === 404 ? 'Not Found' : 'OK' });
+          Object.defineProperty(xhr, 'responseText', { writable: true, value: result.text });
+          Object.defineProperty(xhr, 'response', { writable: true, value: result.text });
           
           if (xhr.onreadystatechange) xhr.onreadystatechange();
           if (xhr.onload) xhr.onload(new Event('load'));
