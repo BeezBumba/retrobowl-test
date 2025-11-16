@@ -1,6 +1,4 @@
-// XHR Interceptor v2 - Proper XHR Mimicking
-// Block send() and use fetch(), but carefully mimic ALL XHR behavior
-
+// XHR Interceptor v2 - Fixed circular reference
 (function() {
   'use strict';
   
@@ -11,17 +9,23 @@
   function CustomXHR() {
     const realXHR = new OriginalXHR();
     let method = '', url = '', isGameFile = false;
-    let readyState = 0, status = 0, statusText = '', responseText = '', response = '', responseURL = '';
+    let interceptedReadyState = 0, interceptedStatus = 0, interceptedStatusText = '';
+    let interceptedResponseText = '', interceptedResponse = '', interceptedResponseURL = '';
     
-    // Internal state
-    const state = {
+    // Store original property descriptors
+    const originalReadyState = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'readyState');
+    const originalStatus = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'status');
+    const originalStatusText = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'statusText');
+    const originalResponseText = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseText');
+    const originalResponse = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'response');
+    const originalResponseURL = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseURL');
+    
+    // Event handlers
+    const handlers = {
       onreadystatechange: null,
       onload: null,
       onloadend: null,
-      onerror: null,
-      onprogress: null,
-      ontimeout: null,
-      onabort: null
+      onerror: null
     };
     
     const originalOpen = realXHR.open;
@@ -30,7 +34,7 @@
       url = u || '';
       isGameFile = (url.includes('/html5game/') || url.startsWith('html5game/')) && 
                    (url.endsWith('.txt') || url.endsWith('.ini'));
-      readyState = 1;
+      interceptedReadyState = 1;
       return originalOpen.apply(this, [m, u, ...args]);
     };
     
@@ -41,92 +45,80 @@
         return originalSend.apply(this, [body]);
       }
       
-      // For game files, use fetch instead of XHR
+      // For game files, use fetch
       const absUrl = url.startsWith('http') ? url : new URL(url, location.href).href;
       
-      // Set loading state
-      readyState = 2;
-      if (state.onreadystatechange) state.onreadystatechange.call(realXHR);
+      interceptedReadyState = 2;
+      if (handlers.onreadystatechange) handlers.onreadystatechange.call(realXHR);
       
       fetch(absUrl, { method: method, credentials: 'same-origin' })
       .then(resp => {
-        status = resp.status;
-        statusText = resp.statusText;
-        responseURL = resp.url;
-        readyState = 3;
-        if (state.onreadystatechange) state.onreadystatechange.call(realXHR);
+        interceptedStatus = resp.status;
+        interceptedStatusText = resp.statusText;
+        interceptedResponseURL = resp.url;
+        interceptedReadyState = 3;
+        if (handlers.onreadystatechange) handlers.onreadystatechange.call(realXHR);
         
         if (method === 'HEAD') {
-          return Promise.resolve('');
+          return '';
         }
         return resp.text();
       })
       .then(text => {
-        responseText = text;
-        response = text;
-        readyState = 4;
+        interceptedResponseText = text;
+        interceptedResponse = text;
+        interceptedReadyState = 4;
         
-        // Fire all success events
-        if (state.onreadystatechange) state.onreadystatechange.call(realXHR);
-        if (state.onload) state.onload.call(realXHR, new Event('load'));
-        if (state.onloadend) state.onloadend.call(realXHR, new Event('loadend'));
+        if (handlers.onreadystatechange) handlers.onreadystatechange.call(realXHR);
+        if (handlers.onload) handlers.onload.call(realXHR, new Event('load'));
+        if (handlers.onloadend) handlers.onloadend.call(realXHR, new Event('loadend'));
       })
       .catch(err => {
-        status = 0;
-        statusText = '';
-        readyState = 4;
+        interceptedStatus = 0;
+        interceptedStatusText = '';
+        interceptedReadyState = 4;
         
-        if (state.onerror) state.onerror.call(realXHR, new Event('error'));
-        if (state.onloadend) state.onloadend.call(realXHR, new Event('loadend'));
+        if (handlers.onerror) handlers.onerror.call(realXHR, new Event('error'));
+        if (handlers.onloadend) handlers.onloadend.call(realXHR, new Event('loadend'));
       });
     };
     
-    // Override all event handlers to use our state
+    // Override event handlers
     Object.defineProperty(realXHR, 'onreadystatechange', {
-      get: () => state.onreadystatechange,
-      set: (v) => { state.onreadystatechange = v; },
-      configurable: true
+      get: () => handlers.onreadystatechange,
+      set: (v) => { handlers.onreadystatechange = v; }
     });
     Object.defineProperty(realXHR, 'onload', {
-      get: () => state.onload,
-      set: (v) => { state.onload = v; },
-      configurable: true
+      get: () => handlers.onload,
+      set: (v) => { handlers.onload = v; }
     });
     Object.defineProperty(realXHR, 'onloadend', {
-      get: () => state.onloadend,
-      set: (v) => { state.onloadend = v; },
-      configurable: true
+      get: () => handlers.onloadend,
+      set: (v) => { handlers.onloadend = v; }
     });
     Object.defineProperty(realXHR, 'onerror', {
-      get: () => state.onerror,
-      set: (v) => { state.onerror = v; },
-      configurable: true
+      get: () => handlers.onerror,
+      set: (v) => { handlers.onerror = v; }
     });
     
     // Override response properties
     Object.defineProperty(realXHR, 'readyState', {
-      get: () => isGameFile ? readyState : realXHR.readyState,
-      configurable: true
+      get: () => isGameFile ? interceptedReadyState : originalReadyState.get.call(realXHR)
     });
     Object.defineProperty(realXHR, 'status', {
-      get: () => isGameFile ? status : realXHR.status,
-      configurable: true
+      get: () => isGameFile ? interceptedStatus : originalStatus.get.call(realXHR)
     });
     Object.defineProperty(realXHR, 'statusText', {
-      get: () => isGameFile ? statusText : realXHR.statusText,
-      configurable: true
+      get: () => isGameFile ? interceptedStatusText : originalStatusText.get.call(realXHR)
     });
     Object.defineProperty(realXHR, 'responseText', {
-      get: () => isGameFile ? responseText : realXHR.responseText,
-      configurable: true
+      get: () => isGameFile ? interceptedResponseText : originalResponseText.get.call(realXHR)
     });
     Object.defineProperty(realXHR, 'response', {
-      get: () => isGameFile ? response : realXHR.response,
-      configurable: true
+      get: () => isGameFile ? interceptedResponse : originalResponse.get.call(realXHR)
     });
     Object.defineProperty(realXHR, 'responseURL', {
-      get: () => isGameFile ? responseURL : realXHR.responseURL,
-      configurable: true
+      get: () => isGameFile ? interceptedResponseURL : originalResponseURL.get.call(realXHR)
     });
     
     return realXHR;
