@@ -1,4 +1,4 @@
-\// XHR Interceptor v2 - Proper XHR Mimicking
+// XHR Interceptor v2 - Proper XHR Mimicking
 // Block send() and use fetch(), but carefully mimic ALL XHR behavior
 
 (function() {
