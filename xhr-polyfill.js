@@ -88,7 +88,11 @@
     // Helper to change ready state
     const changeReadyState = (state) => {
       _readyState = state;
-      fireEvent('readystatechange');
+      // Don't fire onreadystatechange for state 1 (OPENED)
+      // Real XHR only fires for states 2, 3, 4
+      if (state !== 1) {
+        fireEvent('readystatechange');
+      }
     };
     
     // open()
@@ -100,7 +104,8 @@
       _aborted = false;
       _timedOut = false;
       
-      changeReadyState(1); // OPENED
+      // Set state to OPENED but don't fire event
+      _readyState = 1;
     };
     
     // setRequestHeader()
