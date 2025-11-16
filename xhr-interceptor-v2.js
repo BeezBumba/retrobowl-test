@@ -1,8 +1,9 @@
-// XHR Interceptor v2 - HEAD always, GET only when offline
+// XHR Interceptor v2 - With Full Logging
 (function() {
   'use strict';
   
-  console.log('[XHR Interceptor v2] Installing...');
+  console.log('[XHR Interceptor v2] 🔧 Installing...');
+  console.log('[XHR Interceptor v2] 📡 navigator.onLine:', navigator.onLine);
   
   const OriginalXHR = window.XMLHttpRequest;
   
@@ -16,6 +17,11 @@
       url = u || '';
       isGameFile = (url.includes('/html5game/') || url.startsWith('html5game/')) && 
                    (url.endsWith('.txt') || url.endsWith('.ini'));
+      
+      if (isGameFile) {
+        console.log(`[XHR Interceptor v2] 📋 ${method} ${url} (isGameFile: ${isGameFile})`);
+      }
+      
       return originalOpen.apply(this, [m, u, ...args]);
     };
     
@@ -24,6 +30,7 @@
       
       // HEAD: always intercept
       if (isGameFile && method === 'HEAD') {
+        console.log(`[XHR Interceptor v2] ✅ Intercepting HEAD: ${url}`);
         Object.defineProperty(xhr, 'readyState', { writable: true, value: 4 });
         Object.defineProperty(xhr, 'status', { writable: true, value: 200 });
         Object.defineProperty(xhr, 'statusText', { writable: true, value: 'OK' });
@@ -35,13 +42,18 @@
         return;
       }
       
-      // GET: only intercept when offline
-      if (isGameFile && method === 'GET' && !navigator.onLine) {
+      // GET: ALWAYS intercept for game files (navigator.onLine is unreliable)
+      if (isGameFile && method === 'GET') {
+        console.log(`[XHR Interceptor v2] ✅ Intercepting GET: ${url} (online: ${navigator.onLine})`);
         const absUrl = url.startsWith('http') ? url : new URL(url, location.href).href;
         
         fetch(absUrl)
-        .then(r => r.text())
+        .then(r => {
+          console.log(`[XHR Interceptor v2] 📥 Fetch response for ${url}: ${r.status}`);
+          return r.text();
+        })
         .then(text => {
+          console.log(`[XHR Interceptor v2] ✅ Got text for ${url}: ${text.length} bytes`);
           Object.defineProperty(xhr, 'readyState', { writable: true, value: 4 });
           Object.defineProperty(xhr, 'status', { writable: true, value: 200 });
           Object.defineProperty(xhr, 'statusText', { writable: true, value: 'OK' });
@@ -52,7 +64,8 @@
           if (xhr.onload) xhr.onload(new Event('load'));
           if (xhr.onloadend) xhr.onloadend(new Event('loadend'));
         })
-        .catch(() => {
+        .catch(err => {
+          console.error(`[XHR Interceptor v2] ❌ Fetch failed for ${url}:`, err);
           Object.defineProperty(xhr, 'readyState', { writable: true, value: 4 });
           Object.defineProperty(xhr, 'status', { writable: true, value: 0 });
           
@@ -60,6 +73,10 @@
           if (xhr.onloadend) xhr.onloadend(new Event('loadend'));
         });
         return;
+      }
+      
+      if (isGameFile) {
+        console.log(`[XHR Interceptor v2] ➡️ Passing through: ${method} ${url}`);
       }
       
       return originalSend.apply(this, [body]);
@@ -74,5 +91,5 @@
   window.XMLHttpRequest.LOADING = OriginalXHR.LOADING;
   window.XMLHttpRequest.DONE = OriginalXHR.DONE;
   
-  console.log('[XHR Interceptor v2] ✅ Installed (HEAD always, GET when offline)');
+  console.log('[XHR Interceptor v2] ✅ Installed (HEAD always, GET always with logging)');
 })();
