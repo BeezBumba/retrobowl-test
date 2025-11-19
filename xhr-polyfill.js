@@ -1,10 +1,10 @@
-// XHR Polyfill v5 - Intercepts HEAD and GET for game files
-// Uses fetch() for GET requests so service worker can serve from cache offline
+// XHR Polyfill v6 - Smart Fallback Strategy
+// Uses native XHR online, falls back to fetch() when XHR fails (offline)
 
 (function() {
   'use strict';
   
-  console.log('[XHR Polyfill v5] 🚀 Installing...');
+  console.log('[XHR Polyfill v6] 🚀 Installing smart fallback polyfill...');
   
   // Store the original XMLHttpRequest
   const OriginalXHR = window.XMLHttpRequest;
@@ -15,7 +15,8 @@
     const state = {
       method: '',
       url: '',
-      async: true
+      async: true,
+      usedFallback: false
     };
     
     // Store original methods
@@ -28,20 +29,20 @@
       state.url = url || '';
       state.async = async !== false;
       
-      console.log(`[XHR Polyfill v5] 📋 ${state.method} ${state.url}`);
+      console.log(`[XHR Polyfill v6] 📋 ${state.method} ${state.url}`);
       
       // Call original
       return originalOpen.apply(this, [method, url, async, ...args]);
     };
     
-    // Override send to intercept game file requests
+    // Override send with smart fallback
     xhr.send = function(body) {
       const isGameFile = state.url.includes('/html5game/') || state.url.startsWith('html5game/');
       const isDataFile = state.url.endsWith('.txt') || state.url.endsWith('.ini');
       
-      // Intercept HEAD requests for game data files
+      // Always simulate HEAD requests for game data files
       if (state.method === 'HEAD' && isGameFile && isDataFile) {
-        console.log(`[XHR Polyfill v5] ⚡ Simulating HEAD for ${state.url}`);
+        console.log(`[XHR Polyfill v6] ⚡ Simulating HEAD for ${state.url}`);
         
         setTimeout(() => {
           Object.defineProperty(xhr, 'readyState', { 
@@ -62,82 +63,75 @@
           if (xhr.onloadend) xhr.onloadend();
         }, 0);
         
-        return; // Don't call original send
+        return;
       }
       
-      // Intercept GET requests for game data files - use fetch() instead
+      // For GET requests to game data files, try native XHR first
       if (state.method === 'GET' && isGameFile && isDataFile) {
-        console.log(`[XHR Polyfill v5] 🌐 Using fetch() for ${state.url}`);
+        console.log(`[XHR Polyfill v6] 🔄 Trying native XHR for ${state.url}`);
         
-        // Use fetch() which works with service worker offline
-        fetch(state.url)
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`HTTP ${response.status}`);
-            }
-            return response.text();
-          })
-          .then(text => {
-            console.log(`[XHR Polyfill v5] ✅ Loaded ${state.url} (${text.length} bytes)`);
+        // Set up error handler to catch offline failures
+        const originalOnError = xhr.onerror;
+        xhr.onerror = function(e) {
+          // If native XHR fails (likely offline), try fetch() as fallback
+          if (!state.usedFallback) {
+            console.log(`[XHR Polyfill v6] ⚠️ Native XHR failed, trying fetch() fallback for ${state.url}`);
+            state.usedFallback = true;
             
-            // Set response properties
-            Object.defineProperty(xhr, 'readyState', { 
-              get: () => 4, 
-              configurable: true 
-            });
-            Object.defineProperty(xhr, 'status', { 
-              get: () => 200, 
-              configurable: true 
-            });
-            Object.defineProperty(xhr, 'statusText', { 
-              get: () => 'OK', 
-              configurable: true 
-            });
-            Object.defineProperty(xhr, 'responseText', { 
-              get: () => text, 
-              configurable: true 
-            });
-            Object.defineProperty(xhr, 'response', { 
-              get: () => text, 
-              configurable: true 
-            });
-            Object.defineProperty(xhr, 'responseURL', { 
-              get: () => state.url, 
-              configurable: true 
-            });
-            
-            // Fire events
-            if (xhr.onreadystatechange) xhr.onreadystatechange();
-            if (xhr.onload) xhr.onload();
-            if (xhr.onloadend) xhr.onloadend();
-          })
-          .catch(error => {
-            console.error(`[XHR Polyfill v5] ❌ Failed to load ${state.url}:`, error);
-            
-            // Set error state
-            Object.defineProperty(xhr, 'readyState', { 
-              get: () => 4, 
-              configurable: true 
-            });
-            Object.defineProperty(xhr, 'status', { 
-              get: () => 0, 
-              configurable: true 
-            });
-            Object.defineProperty(xhr, 'statusText', { 
-              get: () => '', 
-              configurable: true 
-            });
-            
-            // Fire error events
-            if (xhr.onerror) xhr.onerror();
-            if (xhr.onloadend) xhr.onloadend();
-          });
+            fetch(state.url)
+              .then(response => {
+                if (!response.ok) {
+                  throw new Error(`HTTP ${response.status}`);
+                }
+                return response.text();
+              })
+              .then(text => {
+                console.log(`[XHR Polyfill v6] ✅ Loaded via fetch(): ${state.url} (${text.length} bytes)`);
+                
+                // Set response properties
+                Object.defineProperty(xhr, 'readyState', { 
+                  get: () => 4, 
+                  configurable: true 
+                });
+                Object.defineProperty(xhr, 'status', { 
+                  get: () => 200, 
+                  configurable: true 
+                });
+                Object.defineProperty(xhr, 'statusText', { 
+                  get: () => 'OK', 
+                  configurable: true 
+                });
+                Object.defineProperty(xhr, 'responseText', { 
+                  get: () => text, 
+                  configurable: true 
+                });
+                Object.defineProperty(xhr, 'response', { 
+                  get: () => text, 
+                  configurable: true 
+                });
+                
+                // Fire success events
+                if (xhr.onreadystatechange) xhr.onreadystatechange();
+                if (xhr.onload) xhr.onload();
+                if (xhr.onloadend) xhr.onloadend();
+              })
+              .catch(fetchError => {
+                console.error(`[XHR Polyfill v6] ❌ Both XHR and fetch() failed for ${state.url}:`, fetchError);
+                // Call original error handler if it exists
+                if (originalOnError) originalOnError.call(xhr, e);
+              });
+          } else {
+            // Already tried fallback, call original error handler
+            if (originalOnError) originalOnError.call(xhr, e);
+          }
+        };
         
-        return; // Don't call original send
+        // Try native XHR first
+        return originalSend.apply(this, [body]);
       }
       
-      // For everything else, use original XHR
-      console.log(`[XHR Polyfill v5] ➡️ Passing through ${state.method} ${state.url}`);
+      // For everything else, use native XHR
+      console.log(`[XHR Polyfill v6] ➡️ Using native XHR for ${state.method} ${state.url}`);
       return originalSend.apply(this, [body]);
     };
     
@@ -158,6 +152,6 @@
   // Replace global XMLHttpRequest
   window.XMLHttpRequest = PolyfillXHR;
   
-  console.log('[XHR Polyfill v5] ✅ Installed successfully');
-  console.log('[XHR Polyfill v5] 📝 HEAD requests simulated, GET requests use fetch()');
+  console.log('[XHR Polyfill v6] ✅ Installed successfully');
+  console.log('[XHR Polyfill v6] 📝 Strategy: Native XHR first, fetch() fallback on error');
 })();
