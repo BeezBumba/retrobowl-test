@@ -1,153 +1,290 @@
-// XHR Interceptor v3 for Offline HEAD Request Handling
-// Enhanced with debug logging to diagnose interception issues
+// XHR Polyfill v3 - Complete XMLHttpRequest replacement using fetch()
+// Designed to enable offline functionality for Retro Bowl game
 
 (function() {
   'use strict';
   
-  console.log('[XHR Interceptor v2] 🔧 Installing...');
-  console.log('[XHR Interceptor v2] 📡 navigator.onLine:', navigator.onLine);
+  console.log('[XHR Polyfill v3] 🚀 Installing complete XHR replacement...');
+  console.log('[XHR Polyfill v3] 📡 navigator.onLine:', navigator.onLine);
   
-  // Store the original XMLHttpRequest
+  // Store the original XMLHttpRequest (for debugging if needed)
   const OriginalXHR = window.XMLHttpRequest;
   
-  // Create a custom XMLHttpRequest class
-  function CustomXHR() {
-    const xhr = new OriginalXHR();
-    const state = {
-      method: '',
-      url: '',
-      isGameFile: false,
-      async: true
-    };
+  // Create a custom XMLHttpRequest class that uses fetch() internally
+  class FetchBasedXHR {
+    constructor() {
+      // Internal state
+      this._method = '';
+      this._url = '';
+      this._async = true;
+      this._requestHeaders = {};
+      this._readyState = 0; // UNSENT
+      this._status = 0;
+      this._statusText = '';
+      this._response = null;
+      this._responseText = '';
+      this._responseType = '';
+      this._responseURL = '';
+      this._withCredentials = false;
+      this._timeout = 0;
+      this._aborted = false;
+      
+      // Event handlers
+      this.onreadystatechange = null;
+      this.onload = null;
+      this.onerror = null;
+      this.onabort = null;
+      this.onloadstart = null;
+      this.onloadend = null;
+      this.onprogress = null;
+      this.ontimeout = null;
+      
+      // Upload object (not fully implemented but exists)
+      this.upload = {
+        onprogress: null,
+        onload: null,
+        onerror: null
+      };
+      
+      console.log('[XHR Polyfill v3] 🆕 New XHR instance created');
+    }
     
-    // Override the open method to capture request details
-    const originalOpen = xhr.open;
-    xhr.open = function(m, u, isAsync, ...args) {
-      state.method = (m || '').toUpperCase();
-      state.url = u || '';
-      state.async = isAsync !== false;
+    // Read-only properties exposed via getters
+    get readyState() { return this._readyState; }
+    get status() { return this._status; }
+    get statusText() { return this._statusText; }
+    get response() { return this._response; }
+    get responseText() { return this._responseText; }
+    get responseType() { return this._responseType; }
+    get responseURL() { return this._responseURL; }
+    get timeout() { return this._timeout; }
+    get withCredentials() { return this._withCredentials; }
+    
+    // Writable properties
+    set responseType(value) { this._responseType = value; }
+    set timeout(value) { this._timeout = value; }
+    set withCredentials(value) { this._withCredentials = value; }
+    
+    // Change ready state and fire event
+    _setReadyState(state) {
+      this._readyState = state;
+      console.log(`[XHR Polyfill v3] 📊 ReadyState changed to ${state} for ${this._url}`);
       
-      // Check if this is a HEAD request for a game file
-      const isHead = state.method === 'HEAD';
-      const isHtml5game = state.url.includes('/html5game/') || state.url.startsWith('html5game/');
-      const isTxtOrIni = state.url.endsWith('.txt') || state.url.endsWith('.ini');
+      if (this.onreadystatechange) {
+        try {
+          this.onreadystatechange.call(this, { type: 'readystatechange' });
+        } catch (e) {
+          console.error('[XHR Polyfill v3] ❌ Error in onreadystatechange:', e);
+        }
+      }
+    }
+    
+    // Fire a specific event
+    _fireEvent(eventName, eventInit = {}) {
+      const handler = this[`on${eventName}`];
+      if (handler) {
+        try {
+          const event = { type: eventName, ...eventInit };
+          handler.call(this, event);
+          console.log(`[XHR Polyfill v3] 🎯 Fired ${eventName} for ${this._url}`);
+        } catch (e) {
+          console.error(`[XHR Polyfill v3] ❌ Error in on${eventName}:`, e);
+        }
+      }
+    }
+    
+    // Open a request
+    open(method, url, async = true, username = null, password = null) {
+      this._method = method.toUpperCase();
+      this._url = url;
+      this._async = async;
       
-      state.isGameFile = isHead && isHtml5game && isTxtOrIni;
+      console.log(`[XHR Polyfill v3] 📋 open() called:`, {
+        method: this._method,
+        url: this._url,
+        async: this._async
+      });
       
-      console.log(`[XHR Interceptor v2] 📋 open() called:`, {
-        method: state.method,
-        url: state.url,
-        isHead,
-        isHtml5game,
-        isTxtOrIni,
-        isGameFile: state.isGameFile,
+      // Reset state
+      this._requestHeaders = {};
+      this._status = 0;
+      this._statusText = '';
+      this._response = null;
+      this._responseText = '';
+      this._responseURL = '';
+      this._aborted = false;
+      
+      this._setReadyState(1); // OPENED
+    }
+    
+    // Set a request header
+    setRequestHeader(name, value) {
+      this._requestHeaders[name] = value;
+      console.log(`[XHR Polyfill v3] 📝 setRequestHeader: ${name} = ${value}`);
+    }
+    
+    // Get all response headers
+    getAllResponseHeaders() {
+      // Return empty string for now (could be enhanced)
+      return '';
+    }
+    
+    // Get a specific response header
+    getResponseHeader(name) {
+      // Return null for now (could be enhanced)
+      return null;
+    }
+    
+    // Abort the request
+    abort() {
+      console.log(`[XHR Polyfill v3] 🛑 abort() called for ${this._url}`);
+      this._aborted = true;
+      this._fireEvent('abort');
+      this._fireEvent('loadend');
+    }
+    
+    // Send the request
+    send(body = null) {
+      console.log(`[XHR Polyfill v3] 📤 send() called:`, {
+        method: this._method,
+        url: this._url,
+        async: this._async,
         online: navigator.onLine
       });
       
-      // Call the original open method
-      return originalOpen.apply(this, [m, u, isAsync, ...args]);
-    };
-    
-    // Override the send method to handle the intercepted requests
-    const originalSend = xhr.send;
-    xhr.send = function(body) {
-      console.log(`[XHR Interceptor v2] 📤 send() called:`, {
-        method: state.method,
-        url: state.url,
-        isGameFile: state.isGameFile,
-        online: navigator.onLine
-      });
+      // Fire loadstart
+      this._fireEvent('loadstart');
       
-      if (state.isGameFile) {
-        console.log(`[XHR Interceptor v2] ✅ INTERCEPTING HEAD request for game file: ${state.url}`);
-        
-        // Don't send the request at all - simulate success immediately
-        // Set up the XHR object to look like it succeeded
-        Object.defineProperty(xhr, 'readyState', { 
-          get: function() { return 4; },
-          configurable: true 
-        });
-        Object.defineProperty(xhr, 'status', { 
-          get: function() { return 200; },
-          configurable: true 
-        });
-        Object.defineProperty(xhr, 'statusText', { 
-          get: function() { return 'OK'; },
-          configurable: true 
-        });
-        Object.defineProperty(xhr, 'responseText', { 
-          get: function() { return ''; },
-          configurable: true 
-        });
-        Object.defineProperty(xhr, 'response', { 
-          get: function() { return ''; },
-          configurable: true 
-        });
-        Object.defineProperty(xhr, 'responseURL', { 
-          get: function() { return state.url; },
-          configurable: true 
-        });
-        
-        // Trigger events asynchronously to simulate real XHR behavior
-        setTimeout(() => {
-          console.log(`[XHR Interceptor v2] 🎉 Firing success events for: ${state.url}`);
-          
-          // Fire readystatechange events
-          if (xhr.onreadystatechange) {
-            try {
-              xhr.onreadystatechange();
-            } catch (e) {
-              console.error('[XHR Interceptor v2] ❌ Error in onreadystatechange:', e);
-            }
-          }
-          
-          // Fire load event
-          if (xhr.onload) {
-            try {
-              const event = new Event('load');
-              xhr.onload(event);
-            } catch (e) {
-              console.error('[XHR Interceptor v2] ❌ Error in onload:', e);
-            }
-          }
-          
-          // Fire loadend event
-          if (xhr.onloadend) {
-            try {
-              const event = new Event('loadend');
-              xhr.onloadend(event);
-            } catch (e) {
-              console.error('[XHR Interceptor v2] ❌ Error in onloadend:', e);
-            }
-          }
-        }, 0);
-        
-        console.log(`[XHR Interceptor v2] 🛑 NOT calling originalSend - request blocked`);
-        return; // Don't call the original send
+      // For HEAD requests to game files, return success immediately
+      if (this._method === 'HEAD' && this._isGameFile(this._url)) {
+        console.log(`[XHR Polyfill v3] ⚡ HEAD request for game file - returning success immediately`);
+        this._simulateHeadSuccess();
+        return;
       }
       
-      console.log(`[XHR Interceptor v2] ➡️ Passing through to originalSend`);
-      // For all other requests, use the original send
-      return originalSend.apply(this, [body]);
-    };
+      // Build fetch options
+      const fetchOptions = {
+        method: this._method,
+        headers: this._requestHeaders,
+        credentials: this._withCredentials ? 'include' : 'same-origin'
+      };
+      
+      if (body && this._method !== 'GET' && this._method !== 'HEAD') {
+        fetchOptions.body = body;
+      }
+      
+      // Use fetch() to make the request
+      console.log(`[XHR Polyfill v3] 🌐 Using fetch() for ${this._url}`);
+      
+      fetch(this._url, fetchOptions)
+        .then(response => {
+          if (this._aborted) return;
+          
+          console.log(`[XHR Polyfill v3] ✅ fetch() succeeded:`, {
+            url: this._url,
+            status: response.status,
+            statusText: response.statusText
+          });
+          
+          this._status = response.status;
+          this._statusText = response.statusText;
+          this._responseURL = response.url;
+          
+          // Set state to HEADERS_RECEIVED
+          this._setReadyState(2);
+          
+          // Set state to LOADING
+          this._setReadyState(3);
+          
+          // Read response based on responseType
+          if (this._responseType === 'arraybuffer') {
+            return response.arrayBuffer();
+          } else if (this._responseType === 'blob') {
+            return response.blob();
+          } else if (this._responseType === 'json') {
+            return response.json();
+          } else {
+            // Default to text
+            return response.text();
+          }
+        })
+        .then(data => {
+          if (this._aborted) return;
+          
+          console.log(`[XHR Polyfill v3] 📦 Response data received for ${this._url}`, {
+            type: typeof data,
+            length: data?.length || data?.size || 'unknown'
+          });
+          
+          // Set response data
+          this._response = data;
+          if (typeof data === 'string') {
+            this._responseText = data;
+          }
+          
+          // Set state to DONE
+          this._setReadyState(4);
+          
+          // Fire events
+          this._fireEvent('load');
+          this._fireEvent('loadend');
+        })
+        .catch(error => {
+          if (this._aborted) return;
+          
+          console.error(`[XHR Polyfill v3] ❌ fetch() failed for ${this._url}:`, error);
+          
+          // Set error state
+          this._status = 0;
+          this._statusText = '';
+          this._setReadyState(4);
+          
+          // Fire error events
+          this._fireEvent('error');
+          this._fireEvent('loadend');
+        });
+    }
     
-    return xhr;
+    // Check if URL is a game file
+    _isGameFile(url) {
+      const isHtml5game = url.includes('/html5game/') || url.startsWith('html5game/');
+      const isTxtOrIni = url.endsWith('.txt') || url.endsWith('.ini');
+      return isHtml5game && isTxtOrIni;
+    }
+    
+    // Simulate successful HEAD request
+    _simulateHeadSuccess() {
+      setTimeout(() => {
+        if (this._aborted) return;
+        
+        this._status = 200;
+        this._statusText = 'OK';
+        this._responseURL = this._url;
+        this._response = '';
+        this._responseText = '';
+        
+        this._setReadyState(2); // HEADERS_RECEIVED
+        this._setReadyState(3); // LOADING
+        this._setReadyState(4); // DONE
+        
+        this._fireEvent('load');
+        this._fireEvent('loadend');
+        
+        console.log(`[XHR Polyfill v3] ✅ HEAD request simulated successfully for ${this._url}`);
+      }, 0);
+    }
   }
   
-  // Copy all static properties and constants from the original XMLHttpRequest
-  CustomXHR.UNSENT = OriginalXHR.UNSENT;
-  CustomXHR.OPENED = OriginalXHR.OPENED;
-  CustomXHR.HEADERS_RECEIVED = OriginalXHR.HEADERS_RECEIVED;
-  CustomXHR.LOADING = OriginalXHR.LOADING;
-  CustomXHR.DONE = OriginalXHR.DONE;
+  // Copy static constants
+  FetchBasedXHR.UNSENT = 0;
+  FetchBasedXHR.OPENED = 1;
+  FetchBasedXHR.HEADERS_RECEIVED = 2;
+  FetchBasedXHR.LOADING = 3;
+  FetchBasedXHR.DONE = 4;
   
-  // Set up prototype chain
-  Object.setPrototypeOf(CustomXHR.prototype, OriginalXHR.prototype);
-  Object.setPrototypeOf(CustomXHR, OriginalXHR);
+  // Replace global XMLHttpRequest
+  window.XMLHttpRequest = FetchBasedXHR;
   
-  // Replace the global XMLHttpRequest with our custom version
-  window.XMLHttpRequest = CustomXHR;
-  
-  console.log('[XHR Interceptor v2] ✅ Installed successfully');
-  console.log('[XHR Interceptor v2] 🔍 Waiting for XHR requests...');
+  console.log('[XHR Polyfill v3] ✅ Installation complete - All XHR requests will now use fetch()');
+  console.log('[XHR Polyfill v3] 🎮 Game should now work offline!');
 })();
