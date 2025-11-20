@@ -146,6 +146,31 @@
       const isGameFile = state.url.includes('/html5game/') || state.url.startsWith('html5game/');
       const isDataFile = state.url.endsWith('.txt') || state.url.endsWith('.ini');
       
+      // For HEAD requests to game files, check if cached and simulate success
+      if (state.method === 'HEAD' && isGameFile && isDataFile) {
+        console.log(`%c[XHR v12] 🎯 HEAD: ${state.url}`, 'color: #ff00ff');
+        
+        const cachedData = getCachedFile(state.fullUrl);
+        if (cachedData) {
+          console.log(`%c[XHR v12] ⚡ HEAD from cache: ${state.url}`, 'color: #00ff00');
+          
+          // Simulate successful HEAD response
+          setTimeout(() => {
+            Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
+            Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
+            Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
+            
+            if (xhr.onreadystatechange) xhr.onreadystatechange();
+            if (xhr.onload) xhr.onload();
+            if (xhr.onloadend) xhr.onloadend();
+          }, 0);
+          
+          return;
+        } else {
+          console.log(`%c[XHR v12] ⚠️ HEAD not cached: ${state.url}`, 'color: #ff8800');
+        }
+      }
+      
       // For sync GET requests to game files, serve from localStorage
       if (state.method === 'GET' && isGameFile && isDataFile && !state.async) {
         console.log(`%c[XHR v12] 🎯 SYNC: ${state.url}`, 'color: #ff00ff; font-weight: bold');
