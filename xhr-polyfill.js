@@ -1,53 +1,44 @@
-// XHR Polyfill v12 - Persistent Cache with localStorage
-// Caches files in localStorage so they survive page reloads
-// Serves synchronously from cache offline!
+// XHR Polyfill v13 - Intercept BOTH XHR and fetch()
+// Also intercepts fetch() to catch language file loading
 
 (function() {
   'use strict';
   
-  console.log('%c[XHR Polyfill v12] 🚀 Installing Persistent Cache Polyfill...', 'color: #00ff00; font-weight: bold');
+  console.log('%c[XHR Polyfill v13] 🚀 Installing (XHR + fetch interception)...', 'color: #00ff00; font-weight: bold');
   
   const CACHE_PREFIX = 'xhr_cache_';
   const CACHE_INDEX_KEY = 'xhr_cache_index';
   
-  // Get list of cached files
+  // Cache functions
   function getCacheIndex() {
     try {
       const index = localStorage.getItem(CACHE_INDEX_KEY);
       return index ? JSON.parse(index) : [];
     } catch (e) {
-      console.error('[XHR v12] Error reading cache index:', e);
       return [];
     }
   }
   
-  // Update cache index
   function updateCacheIndex(urls) {
     try {
       localStorage.setItem(CACHE_INDEX_KEY, JSON.stringify(urls));
-    } catch (e) {
-      console.error('[XHR v12] Error updating cache index:', e);
-    }
+    } catch (e) {}
   }
   
-  // Get cached file
   function getCachedFile(url) {
     try {
       const key = CACHE_PREFIX + url;
       return localStorage.getItem(key);
     } catch (e) {
-      console.error('[XHR v12] Error reading cache:', e);
       return null;
     }
   }
   
-  // Cache a file
   function cacheFile(url, data) {
     try {
       const key = CACHE_PREFIX + url;
       localStorage.setItem(key, data);
       
-      // Update index
       const index = getCacheIndex();
       if (!index.includes(url)) {
         index.push(url);
@@ -56,51 +47,72 @@
       
       return true;
     } catch (e) {
-      console.error('[XHR v12] Error caching file:', e);
       return false;
     }
   }
   
   // Check cache status
   const cacheIndex = getCacheIndex();
-  console.log(`%c[XHR v12] 📦 Found ${cacheIndex.length} cached files in localStorage`, 'color: #00aaff');
-  cacheIndex.forEach(url => {
-    const data = getCachedFile(url);
-    if (data) {
-      console.log(`  - ${url} (${data.length} bytes)`);
-    }
-  });
+  console.log(`%c[XHR v13] 📦 Found ${cacheIndex.length} cached files`, 'color: #00aaff');
   
-  // Store the original XMLHttpRequest
-  const OriginalXHR = window.XMLHttpRequest;
+  // ========== INTERCEPT FETCH() ==========
+  const originalFetch = window.fetch;
   
-  // Track files to cache
-  const filesToCache = new Set();
-  
-  // Pre-cache a file using fetch
-  async function preCacheFile(url) {
-    if (getCachedFile(url)) {
-      console.log(`%c[XHR v12] 📦 Already cached: ${url}`, 'color: #888');
-      return;
+  window.fetch = function(url, options) {
+    const urlString = typeof url === 'string' ? url : url.url || url.href || '';
+    const method = (options && options.method) || 'GET';
+    
+    // Log all fetch requests to Language files
+    if (urlString.includes('Language')) {
+      console.log(`%c[XHR v13] 🌐 fetch() ${method} ${urlString}`, 'color: #ff00ff; font-weight: bold');
     }
     
-    try {
-      console.log(`%c[XHR v12] 📥 Caching: ${url}`, 'color: #00aaff');
-      const response = await fetch(url);
-      if (response.ok) {
-        const text = await response.text();
-        if (cacheFile(url, text)) {
-          console.log(`%c[XHR v12] ✅ Cached: ${url} (${text.length} bytes)`, 'color: #00ff00');
-        }
-      } else {
-        console.log(`%c[XHR v12] ⚠️ Failed: ${url} (${response.status})`, 'color: #ff8800');
+    // Check if it's a game file request
+    const isGameFile = urlString.includes('/html5game/') || urlString.includes('html5game/');
+    const isDataFile = urlString.endsWith('.txt') || urlString.endsWith('.ini');
+    
+    if (method === 'GET' && isGameFile && isDataFile) {
+      // Build full URL
+      let fullUrl = urlString;
+      if (!fullUrl.startsWith('http')) {
+        fullUrl = new URL(fullUrl, window.location.href).href;
       }
-    } catch (error) {
-      console.log(`%c[XHR v12] ❌ Error: ${url}`, 'color: #ff0000', error);
+      
+      // Check cache first
+      const cachedData = getCachedFile(fullUrl);
+      if (cachedData) {
+        console.log(`%c[XHR v13] ⚡ fetch() from cache: ${urlString} (${cachedData.length} bytes)`, 'color: #00ff00; font-weight: bold');
+        
+        // Return cached data as Response
+        return Promise.resolve(new Response(cachedData, {
+          status: 200,
+          statusText: 'OK',
+          headers: { 'Content-Type': 'text/plain' }
+        }));
+      } else {
+        console.log(`%c[XHR v13] 📥 fetch() from network: ${urlString}`, 'color: #00aaff');
+        
+        // Fetch from network and cache
+        return originalFetch.apply(this, arguments).then(response => {
+          if (response.ok) {
+            return response.clone().text().then(text => {
+              cacheFile(fullUrl, text);
+              console.log(`%c[XHR v13] ✅ Cached from fetch: ${urlString} (${text.length} bytes)`, 'color: #00ff00');
+              return response;
+            });
+          }
+          return response;
+        });
+      }
     }
-  }
+    
+    // For everything else, use original fetch
+    return originalFetch.apply(this, arguments);
+  };
   
-  // Create a wrapper
+  // ========== INTERCEPT XHR ==========
+  const OriginalXHR = window.XMLHttpRequest;
+  
   function PolyfillXHR() {
     const xhr = new OriginalXHR();
     const state = {
@@ -118,7 +130,6 @@
       state.url = url || '';
       state.async = async !== false;
       
-      // Build full URL
       if (state.url.startsWith('http')) {
         state.fullUrl = state.url;
       } else {
@@ -128,19 +139,22 @@
       const isGameFile = state.url.includes('/html5game/') || state.url.startsWith('html5game/');
       const isDataFile = state.url.endsWith('.txt') || state.url.endsWith('.ini');
       
-      // LOG ALL REQUESTS TO LANGUAGE FILES
       if (state.url.includes('Language')) {
-        console.log(`%c[XHR v12] 🔍 OPEN ${state.method} ${state.url} (async: ${state.async})`, 'color: #ff00ff; font-weight: bold');
+        console.log(`%c[XHR v13] 🔍 XHR ${state.method} ${state.url} (async: ${state.async})`, 'color: #ff00ff; font-weight: bold');
       }
       
-      // Track and pre-cache game files
       if (state.method === 'GET' && isGameFile && isDataFile) {
-        if (!filesToCache.has(state.fullUrl)) {
-          filesToCache.add(state.fullUrl);
-          console.log(`%c[XHR v12] 📝 Discovered: ${state.url}`, 'color: #00aaff');
-          
-          // Pre-cache in background
-          preCacheFile(state.fullUrl);
+        if (!getCachedFile(state.fullUrl)) {
+          originalFetch(state.fullUrl).then(response => {
+            if (response.ok) {
+              return response.text();
+            }
+          }).then(text => {
+            if (text) {
+              cacheFile(state.fullUrl, text);
+              console.log(`%c[XHR v13] ✅ Pre-cached: ${state.url}`, 'color: #00ff00');
+            }
+          }).catch(() => {});
         }
       }
       
@@ -151,20 +165,12 @@
       const isGameFile = state.url.includes('/html5game/') || state.url.startsWith('html5game/');
       const isDataFile = state.url.endsWith('.txt') || state.url.endsWith('.ini');
       
-      // LOG ALL SENDS TO LANGUAGE FILES
-      if (state.url.includes('Language')) {
-        console.log(`%c[XHR v12] 🔍 SEND ${state.method} ${state.url}`, 'color: #ff00ff; font-weight: bold');
-      }
-      
-      // For HEAD requests to game files, check if cached and simulate success
+      // For HEAD requests
       if (state.method === 'HEAD' && isGameFile && isDataFile) {
-        console.log(`%c[XHR v12] 🎯 HEAD: ${state.url}`, 'color: #ff00ff');
-        
         const cachedData = getCachedFile(state.fullUrl);
         if (cachedData) {
-          console.log(`%c[XHR v12] ⚡ HEAD from cache: ${state.url}`, 'color: #00ff00');
+          console.log(`%c[XHR v13] ⚡ HEAD from cache: ${state.url}`, 'color: #00ff00');
           
-          // Simulate successful HEAD response
           setTimeout(() => {
             Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
             Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
@@ -176,41 +182,30 @@
           }, 0);
           
           return;
-        } else {
-          console.log(`%c[XHR v12] ⚠️ HEAD not cached: ${state.url}`, 'color: #ff8800');
         }
       }
       
-      // For sync GET requests to game files, serve from localStorage
+      // For sync GET requests
       if (state.method === 'GET' && isGameFile && isDataFile && !state.async) {
-        console.log(`%c[XHR v12] 🎯 SYNC: ${state.url}`, 'color: #ff00ff; font-weight: bold');
-        
         const cachedData = getCachedFile(state.fullUrl);
         if (cachedData) {
-          console.log(`%c[XHR v12] ⚡ From cache: ${state.url} (${cachedData.length} bytes)`, 'color: #00ff00; font-weight: bold');
+          console.log(`%c[XHR v13] ⚡ SYNC from cache: ${state.url} (${cachedData.length} bytes)`, 'color: #00ff00; font-weight: bold');
           
-          // Set response synchronously
           Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
           Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
           Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
           Object.defineProperty(xhr, 'responseText', { get: () => cachedData, configurable: true });
           Object.defineProperty(xhr, 'response', { get: () => cachedData, configurable: true });
-          Object.defineProperty(xhr, 'responseURL', { get: () => state.fullUrl, configurable: true });
           
-          console.log(`%c[XHR v12] ✅ Sync response ready!`, 'color: #00ff00; font-weight: bold');
           return;
-        } else {
-          console.log(`%c[XHR v12] ⚠️ Not cached, using native XHR: ${state.url}`, 'color: #ff8800');
         }
       }
       
-      // For async GET requests to game files
+      // For async GET requests
       if (state.method === 'GET' && isGameFile && isDataFile && state.async) {
-        console.log(`%c[XHR v12] 🎯 ASYNC: ${state.url}`, 'color: #8800ff');
-        
         const cachedData = getCachedFile(state.fullUrl);
         if (cachedData) {
-          console.log(`%c[XHR v12] ⚡ From cache (async): ${state.url}`, 'color: #00ff00');
+          console.log(`%c[XHR v13] ⚡ ASYNC from cache: ${state.url}`, 'color: #00ff00');
           
           setTimeout(() => {
             Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
@@ -228,15 +223,12 @@
         }
       }
       
-      // Native XHR for everything else
-      console.log(`%c[XHR v12] ➡️ Native: ${state.method} ${state.url}`, 'color: #888');
       return originalSend.apply(this, [body]);
     };
     
     return xhr;
   }
   
-  // Copy static properties
   PolyfillXHR.UNSENT = OriginalXHR.UNSENT;
   PolyfillXHR.OPENED = OriginalXHR.OPENED;
   PolyfillXHR.HEADERS_RECEIVED = OriginalXHR.HEADERS_RECEIVED;
@@ -248,6 +240,5 @@
   
   window.XMLHttpRequest = PolyfillXHR;
   
-  console.log('%c[XHR Polyfill v12] ✅ Installed', 'color: #00ff00; font-weight: bold');
-  console.log('%c[XHR Polyfill v12] 💾 Using localStorage for persistent cache', 'color: #00ff00');
+  console.log('%c[XHR Polyfill v13] ✅ Installed (XHR + fetch)', 'color: #00ff00; font-weight: bold');
 })();
