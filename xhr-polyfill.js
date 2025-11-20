@@ -128,6 +128,11 @@
       const isGameFile = state.url.includes('/html5game/') || state.url.startsWith('html5game/');
       const isDataFile = state.url.endsWith('.txt') || state.url.endsWith('.ini');
       
+      // LOG ALL REQUESTS TO LANGUAGE FILES
+      if (state.url.includes('Language')) {
+        console.log(`%c[XHR v12] 🔍 OPEN ${state.method} ${state.url} (async: ${state.async})`, 'color: #ff00ff; font-weight: bold');
+      }
+      
       // Track and pre-cache game files
       if (state.method === 'GET' && isGameFile && isDataFile) {
         if (!filesToCache.has(state.fullUrl)) {
@@ -145,6 +150,11 @@
     xhr.send = function(body) {
       const isGameFile = state.url.includes('/html5game/') || state.url.startsWith('html5game/');
       const isDataFile = state.url.endsWith('.txt') || state.url.endsWith('.ini');
+      
+      // LOG ALL SENDS TO LANGUAGE FILES
+      if (state.url.includes('Language')) {
+        console.log(`%c[XHR v12] 🔍 SEND ${state.method} ${state.url}`, 'color: #ff00ff; font-weight: bold');
+      }
       
       // For HEAD requests to game files, check if cached and simulate success
       if (state.method === 'HEAD' && isGameFile && isDataFile) {
