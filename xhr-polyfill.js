@@ -1,10 +1,10 @@
-// XHR Polyfill v14 - With Embedded LanguageUS.txt
+// XHR Polyfill v15 - With Embedded LanguageUS.txt + Sync HEAD Fix
 // Embeds language file and serves it directly for offline use
 
 (function() {
   'use strict';
   
-  console.log('%c[XHR Polyfill v14] 🚀 Installing with embedded language...', 'color: #00ff00; font-weight: bold');
+  console.log('%c[XHR Polyfill v15] 🚀 Installing with embedded language...', 'color: #00ff00; font-weight: bold');
   
   const CACHE_PREFIX = 'xhr_cache_';
   const CACHE_INDEX_KEY = 'xhr_cache_index';
@@ -1552,16 +1552,25 @@ ui_Offers	Offers`;
         console.log(`%c[XHR v14] 🌟 Serving EMBEDDED LanguageUS.txt (${state.method})`, 'color: #ffaa00; font-weight: bold');
         
         if (state.method === 'HEAD') {
-          // HEAD request - just return success
-          setTimeout(() => {
+          // HEAD request - return success
+          if (state.async) {
+            // Async HEAD
+            setTimeout(() => {
+              Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
+              Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
+              Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
+              
+              if (xhr.onreadystatechange) xhr.onreadystatechange();
+              if (xhr.onload) xhr.onload();
+              if (xhr.onloadend) xhr.onloadend();
+            }, 0);
+          } else {
+            // Sync HEAD - set immediately!
+            console.log(`%c[XHR v15] ⚡ SYNC HEAD for LanguageUS.txt - setting status NOW`, 'color: #00ff00; font-weight: bold');
             Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
             Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
             Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
-            
-            if (xhr.onreadystatechange) xhr.onreadystatechange();
-            if (xhr.onload) xhr.onload();
-            if (xhr.onloadend) xhr.onloadend();
-          }, 0);
+          }
         } else {
           // GET request - return embedded data
           if (state.async) {
