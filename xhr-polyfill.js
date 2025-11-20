@@ -1,15 +1,16 @@
-// XHR Polyfill v15 - With Embedded LanguageUS.txt + Sync HEAD Fix
-// Embeds language file and serves it directly for offline use
+// XHR Polyfill v16 - Complete Offline Solution
+// Embeds language files and pre-caches all game data files
 
 (function() {
   'use strict';
   
-  console.log('%c[XHR Polyfill v15] 🚀 Installing with embedded language...', 'color: #00ff00; font-weight: bold');
+  console.log('%c[XHR Polyfill v16] 🚀 Installing complete offline solution...', 'color: #00ff00; font-weight: bold');
   
   const CACHE_PREFIX = 'xhr_cache_';
   const CACHE_INDEX_KEY = 'xhr_cache_index';
+  const PRECACHE_STATUS_KEY = 'xhr_precache_status';
   
-  // Load embedded language data
+  // Embedded language files
   const EMBEDDED_LANGUAGE_US = `
 msg_Update	Thank you for updating Retro Bowl!##You are now able to play exhibition games! Choose two teams for a one-off game and even pass n' play to compete against a fellow human!##I hope you are still enjoying Retro Bowl and thank you for your continued support.##- Simon
 ui_NewStarGames	New Star Games
@@ -1444,10 +1445,34 @@ aa_info_StartWithFave	Retro Bowl+ is a game all about building a legacy. If you 
 
 ui_NoOffers	No Offers
 ui_OneOffer	1 Offer
-ui_Offers	Offers`;
+ui_Offers	Offers
+`;
+
+  const EMBEDDED_LANGUAGE_US_FR = `
+ui_Version_Mode	Franchise
+ui_SimGame	Sim Game`;
 
   
-  console.log(`%c[XHR v14] 📦 Embedded language file: ${EMBEDDED_LANGUAGE_US.length} bytes`, 'color: #00aaff');
+  // List of all game .txt files to pre-cache
+  const GAME_FILES_TO_PRECACHE = [
+    'html5game/Achievements.txt',
+    'html5game/Charities.txt',
+    'html5game/Colleges.txt',
+    'html5game/Names_F0.txt',
+    'html5game/Names_F1.txt',
+    'html5game/Names_L.txt',
+    'html5game/PlayerRecords.txt',
+    'html5game/RetroBowlHOF.txt',
+    'html5game/RetroBowl_History.txt',
+    'html5game/Schedule17.txt',
+    'html5game/Shopping.txt',
+    'html5game/Teams.txt',
+    'html5game/code.txt',
+    'html5game/uniforms_default.txt'
+  ];
+  
+  console.log(`%c[XHR v16] 📦 Embedded LanguageUS.txt: ${EMBEDDED_LANGUAGE_US.length} bytes`, 'color: #00aaff');
+  console.log(`%c[XHR v16] 📦 Embedded LanguageUS_FR.txt: ${EMBEDDED_LANGUAGE_US_FR.length} bytes`, 'color: #00aaff');
   
   // Cache functions
   function getCacheIndex() {
@@ -1487,12 +1512,78 @@ ui_Offers	Offers`;
       
       return true;
     } catch (e) {
+      console.warn(`[XHR v16] ⚠️ Failed to cache ${url}:`, e.message);
       return false;
     }
   }
   
+  function getPrecacheStatus() {
+    try {
+      return localStorage.getItem(PRECACHE_STATUS_KEY) === 'complete';
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  function setPrecacheComplete() {
+    try {
+      localStorage.setItem(PRECACHE_STATUS_KEY, 'complete');
+    } catch (e) {}
+  }
+  
   const cacheIndex = getCacheIndex();
-  console.log(`%c[XHR v14] 📦 Found ${cacheIndex.length} cached files in localStorage`, 'color: #00aaff');
+  console.log(`%c[XHR v16] 📦 Found ${cacheIndex.length} cached files in localStorage`, 'color: #00aaff');
+  
+  // Pre-cache all game files in background
+  if (!getPrecacheStatus() && navigator.onLine) {
+    console.log('%c[XHR v16] 🔄 Starting pre-cache of all game files...', 'color: #ffaa00');
+    
+    let cached = 0;
+    const total = GAME_FILES_TO_PRECACHE.length;
+    
+    GAME_FILES_TO_PRECACHE.forEach((file, index) => {
+      const fullUrl = new URL(file, window.location.href).href;
+      
+      // Skip if already cached
+      if (getCachedFile(fullUrl)) {
+        cached++;
+        if (cached === total) {
+          setPrecacheComplete();
+          console.log('%c[XHR v16] ✅ Pre-cache complete! All game files ready for offline use.', 'color: #00ff00; font-weight: bold');
+        }
+        return;
+      }
+      
+      // Fetch and cache
+      fetch(fullUrl)
+        .then(response => {
+          if (response.ok) {
+            return response.text();
+          }
+          throw new Error(`HTTP ${response.status}`);
+        })
+        .then(text => {
+          if (cacheFile(fullUrl, text)) {
+            cached++;
+            console.log(`%c[XHR v16] ✅ Pre-cached: ${file} (${text.length} bytes) [${cached}/${total}]`, 'color: #00ff00');
+            
+            if (cached === total) {
+              setPrecacheComplete();
+              console.log('%c[XHR v16] 🎉 Pre-cache complete! All game files ready for offline use.', 'color: #00ff00; font-weight: bold');
+            }
+          }
+        })
+        .catch(err => {
+          console.warn(`%c[XHR v16] ⚠️ Failed to pre-cache ${file}: ${err.message}`, 'color: #ff6600');
+          cached++;
+          if (cached === total) {
+            console.log('%c[XHR v16] ⚠️ Pre-cache finished with some failures', 'color: #ffaa00');
+          }
+        });
+    });
+  } else if (getPrecacheStatus()) {
+    console.log('%c[XHR v16] ✅ Pre-cache already complete!', 'color: #00ff00');
+  }
   
   // ========== INTERCEPT XHR ==========
   const OriginalXHR = window.XMLHttpRequest;
@@ -1520,25 +1611,6 @@ ui_Offers	Offers`;
         state.fullUrl = new URL(state.url, window.location.href).href;
       }
       
-      const isGameFile = state.url.includes('/html5game/') || state.url.startsWith('html5game/');
-      const isDataFile = state.url.endsWith('.txt') || state.url.endsWith('.ini');
-      
-      // Pre-cache game files in background
-      if (state.method === 'GET' && isGameFile && isDataFile) {
-        if (!getCachedFile(state.fullUrl)) {
-          fetch(state.fullUrl).then(response => {
-            if (response.ok) {
-              return response.text();
-            }
-          }).then(text => {
-            if (text) {
-              cacheFile(state.fullUrl, text);
-              console.log(`%c[XHR v14] ✅ Pre-cached: ${state.url}`, 'color: #00ff00');
-            }
-          }).catch(() => {});
-        }
-      }
-      
       return originalOpen.apply(this, [method, url, async, ...args]);
     };
     
@@ -1546,48 +1618,41 @@ ui_Offers	Offers`;
       const isGameFile = state.url.includes('/html5game/') || state.url.startsWith('html5game/');
       const isDataFile = state.url.endsWith('.txt') || state.url.endsWith('.ini');
       const isLanguageUS = state.url.includes('LanguageUS.txt');
+      const isLanguageUS_FR = state.url.includes('LanguageUS_FR.txt');
       
       // For LanguageUS.txt, ALWAYS serve embedded data
       if (isLanguageUS && (state.method === 'GET' || state.method === 'HEAD')) {
-        console.log(`%c[XHR v14] 🌟 Serving EMBEDDED LanguageUS.txt (${state.method})`, 'color: #ffaa00; font-weight: bold');
+        console.log(`%c[XHR v16] 🌟 Serving EMBEDDED LanguageUS.txt (${state.method})`, 'color: #ffaa00; font-weight: bold');
         
         if (state.method === 'HEAD') {
-          // HEAD request - return success
           if (state.async) {
-            // Async HEAD
             setTimeout(() => {
               Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
               Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
               Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
-              
               if (xhr.onreadystatechange) xhr.onreadystatechange();
               if (xhr.onload) xhr.onload();
               if (xhr.onloadend) xhr.onloadend();
             }, 0);
           } else {
-            // Sync HEAD - set immediately!
-            console.log(`%c[XHR v15] ⚡ SYNC HEAD for LanguageUS.txt - setting status NOW`, 'color: #00ff00; font-weight: bold');
             Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
             Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
             Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
           }
         } else {
-          // GET request - return embedded data
+          // GET request
           if (state.async) {
-            // Async GET
             setTimeout(() => {
               Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
               Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
               Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
               Object.defineProperty(xhr, 'responseText', { get: () => EMBEDDED_LANGUAGE_US, configurable: true });
               Object.defineProperty(xhr, 'response', { get: () => EMBEDDED_LANGUAGE_US, configurable: true });
-              
               if (xhr.onreadystatechange) xhr.onreadystatechange();
               if (xhr.onload) xhr.onload();
               if (xhr.onloadend) xhr.onloadend();
             }, 0);
           } else {
-            // Sync GET
             Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
             Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
             Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
@@ -1595,25 +1660,72 @@ ui_Offers	Offers`;
             Object.defineProperty(xhr, 'response', { get: () => EMBEDDED_LANGUAGE_US, configurable: true });
           }
         }
+        return;
+      }
+      
+      // For LanguageUS_FR.txt, ALWAYS serve embedded data
+      if (isLanguageUS_FR && (state.method === 'GET' || state.method === 'HEAD')) {
+        console.log(`%c[XHR v16] 🌟 Serving EMBEDDED LanguageUS_FR.txt (${state.method})`, 'color: #ffaa00; font-weight: bold');
         
-        return; // Don't call original send
+        if (state.method === 'HEAD') {
+          if (state.async) {
+            setTimeout(() => {
+              Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
+              Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
+              Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
+              if (xhr.onreadystatechange) xhr.onreadystatechange();
+              if (xhr.onload) xhr.onload();
+              if (xhr.onloadend) xhr.onloadend();
+            }, 0);
+          } else {
+            Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
+            Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
+            Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
+          }
+        } else {
+          // GET request
+          if (state.async) {
+            setTimeout(() => {
+              Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
+              Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
+              Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
+              Object.defineProperty(xhr, 'responseText', { get: () => EMBEDDED_LANGUAGE_US_FR, configurable: true });
+              Object.defineProperty(xhr, 'response', { get: () => EMBEDDED_LANGUAGE_US_FR, configurable: true });
+              if (xhr.onreadystatechange) xhr.onreadystatechange();
+              if (xhr.onload) xhr.onload();
+              if (xhr.onloadend) xhr.onloadend();
+            }, 0);
+          } else {
+            Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
+            Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
+            Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
+            Object.defineProperty(xhr, 'responseText', { get: () => EMBEDDED_LANGUAGE_US_FR, configurable: true });
+            Object.defineProperty(xhr, 'response', { get: () => EMBEDDED_LANGUAGE_US_FR, configurable: true });
+          }
+        }
+        return;
       }
       
       // For HEAD requests to other game files
       if (state.method === 'HEAD' && isGameFile && isDataFile) {
         const cachedData = getCachedFile(state.fullUrl);
         if (cachedData) {
-          console.log(`%c[XHR v14] ⚡ HEAD from cache: ${state.url}`, 'color: #00ff00');
+          console.log(`%c[XHR v16] ⚡ HEAD from cache: ${state.url}`, 'color: #00ff00');
           
-          setTimeout(() => {
+          if (state.async) {
+            setTimeout(() => {
+              Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
+              Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
+              Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
+              if (xhr.onreadystatechange) xhr.onreadystatechange();
+              if (xhr.onload) xhr.onload();
+              if (xhr.onloadend) xhr.onloadend();
+            }, 0);
+          } else {
             Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
             Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
             Object.defineProperty(xhr, 'statusText', { get: () => 'OK', configurable: true });
-            
-            if (xhr.onreadystatechange) xhr.onreadystatechange();
-            if (xhr.onload) xhr.onload();
-            if (xhr.onloadend) xhr.onloadend();
-          }, 0);
+          }
           
           return;
         }
@@ -1623,7 +1735,7 @@ ui_Offers	Offers`;
       if (state.method === 'GET' && isGameFile && isDataFile && !state.async) {
         const cachedData = getCachedFile(state.fullUrl);
         if (cachedData) {
-          console.log(`%c[XHR v14] ⚡ SYNC from cache: ${state.url}`, 'color: #00ff00');
+          console.log(`%c[XHR v16] ⚡ SYNC GET from cache: ${state.url}`, 'color: #00ff00');
           
           Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
           Object.defineProperty(xhr, 'status', { get: () => 200, configurable: true });
@@ -1639,7 +1751,7 @@ ui_Offers	Offers`;
       if (state.method === 'GET' && isGameFile && isDataFile && state.async) {
         const cachedData = getCachedFile(state.fullUrl);
         if (cachedData) {
-          console.log(`%c[XHR v14] ⚡ ASYNC from cache: ${state.url}`, 'color: #00ff00');
+          console.log(`%c[XHR v16] ⚡ ASYNC GET from cache: ${state.url}`, 'color: #00ff00');
           
           setTimeout(() => {
             Object.defineProperty(xhr, 'readyState', { get: () => 4, configurable: true });
@@ -1657,7 +1769,20 @@ ui_Offers	Offers`;
         }
       }
       
-      // For everything else, use native XHR
+      // For everything else, use native XHR and cache on success
+      if (state.method === 'GET' && isGameFile && isDataFile) {
+        const originalOnLoad = xhr.onload;
+        const originalOnReadyStateChange = xhr.onreadystatechange;
+        
+        xhr.onreadystatechange = function() {
+          if (xhr.readyState === 4 && xhr.status === 200 && xhr.responseText) {
+            cacheFile(state.fullUrl, xhr.responseText);
+            console.log(`%c[XHR v16] ✅ Auto-cached: ${state.url}`, 'color: #00ff00');
+          }
+          if (originalOnReadyStateChange) originalOnReadyStateChange.apply(this, arguments);
+        };
+      }
+      
       return originalSend.apply(this, [body]);
     };
     
@@ -1675,5 +1800,6 @@ ui_Offers	Offers`;
   
   window.XMLHttpRequest = PolyfillXHR;
   
-  console.log('%c[XHR Polyfill v14] ✅ Installed with embedded language support!', 'color: #00ff00; font-weight: bold');
+  console.log('%c[XHR Polyfill v16] ✅ Complete offline solution installed!', 'color: #00ff00; font-weight: bold');
+  console.log('%c[XHR Polyfill v16] 📝 Play online once to cache all files, then enjoy offline!', 'color: #00aaff');
 })();
