@@ -27,6 +27,7 @@
     margin: 0px;
     padding: 0px;
     border: 0px;
+    overflow: hidden; /* Prevent scrolling on iPad */
     }
 
 
@@ -37,6 +38,14 @@
             margin: 0px;
             padding: 0px;
             border: 0px;
+            /* Force 16:9 aspect ratio for non-16:9 displays (iPad fix) */
+            width: 100vw !important;
+            height: 56.25vw !important; /* 16:9 ratio */
+            max-height: 100vh !important;
+            max-width: 177.78vh !important; /* 16:9 ratio */
+            object-fit: contain !important;
+            display: block !important;
+            margin: 0 auto !important;
         }
 
         :-webkit-full-screen #canvas {
